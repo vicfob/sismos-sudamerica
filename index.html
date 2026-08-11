@@ -148,6 +148,16 @@ button{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.08e
 .progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
 .err-box{max-width:520px;text-align:center;color:var(--dim);font-size:13.5px;line-height:1.6}
 .err-box b{color:var(--m4)}
+.err-box .btn-retry{margin-top:14px;padding:7px 16px;border-radius:7px;cursor:pointer;
+  background:var(--accent-glow);border:1px solid var(--accent-dim);color:var(--accent);
+  font:inherit;font-size:13px}
+.err-box .btn-retry:hover{background:var(--accent-dim);color:#0a0d13}
+#warnToast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:1200;
+  max-width:min(560px,92vw);padding:11px 16px;border-radius:9px;font-size:12.5px;
+  line-height:1.55;color:var(--text);background:var(--surface2);box-shadow:var(--shadow);
+  border:1px solid var(--m2);display:none}
+#warnToast b{color:var(--m2)}
+#warnToast .x{float:right;margin-left:12px;cursor:pointer;color:var(--faint)}
 #fileInput{display:none}
 
 footer.credits{padding:18px clamp(16px,4vw,40px) 32px;color:var(--faint);font-size:11.5px;
@@ -650,6 +660,14 @@ const state = {
 };
 const POLL_MS = 60000;   // USGS refresca ~cada minuto
 
+/* Descarga: el USGS corta en 20k eventos por consulta, así que se pide por bloques
+   de varios años (menos peticiones = menos ocasiones de fallo) y se parte el bloque
+   solo si realmente topa el límite. */
+const USGS_LIMIT   = 20000;
+const YEARS_CHUNK  = 5;      // años por consulta
+const USGS_TIMEOUT = 45000;  // ms antes de abortar una consulta colgada
+const USGS_TRIES   = 4;      // intentos por consulta (con backoff exponencial)
+
 /* color por magnitud (escala cálida = energía) */
 const MAG_STOPS = [
   [4, "#ffe27a"], [4.8,"#ffb44d"], [5.6,"#ff7f3f"], [6.4,"#ef4444"], [7.5,"#a5183b"]
@@ -732,19 +750,53 @@ function featuresToEvents(features){
     .filter(e => e.mag!=null && e.lat!=null && e.lon!=null && e.depth!=null);
 }
 
-async function fetchYear(year, minMag){
-  const p = new URLSearchParams({
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* parámetros de una consulta al USGS acotada al bbox y a un rango de tiempo */
+function usgsParams(t0, t1, minMag){
+  return new URLSearchParams({
     format:"geojson",
-    starttime:`${year}-01-01`, endtime:`${year+1}-01-01`,
+    starttime:new Date(t0).toISOString(), endtime:new Date(t1).toISOString(),
     minmagnitude:String(minMag),
     minlatitude:BBOX.minlat, maxlatitude:BBOX.maxlat,
     minlongitude:BBOX.minlon, maxlongitude:BBOX.maxlon,
-    orderby:"time-asc",
+    orderby:"time-asc", limit:String(USGS_LIMIT),
   });
-  const res = await fetch(`${USGS}?${p.toString()}`);
-  if(!res.ok) throw new Error(`USGS ${res.status}`);
-  const gj = await res.json();
-  return featuresToEvents(gj.features);
+}
+
+/* fetch al USGS con timeout, reintentos y backoff exponencial.
+   Un corte de red puntual o un 429/5xx pasajero ya no tumban la carga entera. */
+async function usgsFetch(params, tries = USGS_TRIES){
+  let lastErr = new Error("sin respuesta");
+  for(let attempt=0; attempt<tries; attempt++){
+    if(attempt) await sleep(700 * 2**(attempt-1) + Math.random()*400);  // backoff + jitter
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), USGS_TIMEOUT);
+    try{
+      const res = await fetch(`${USGS}?${params.toString()}`, {signal:ctrl.signal});
+      if(res.ok) return await res.json();
+      lastErr = new Error(`USGS respondió ${res.status}`);
+      if(res.status !== 429 && res.status < 500) break;   // error del cliente: reintentar no ayuda
+    }catch(err){
+      lastErr = (err.name === "AbortError")
+        ? new Error(`la consulta superó ${USGS_TIMEOUT/1000} s`)
+        : err;
+    }finally{ clearTimeout(timer); }
+  }
+  throw lastErr;
+}
+
+/* descarga un rango de tiempo; si topa el límite de 20k eventos lo parte por la mitad */
+async function fetchSpan(t0, t1, minMag){
+  const gj = await usgsFetch(usgsParams(t0, t1, minMag));
+  const feats = gj.features || [];
+  if(feats.length >= USGS_LIMIT && (t1-t0) > 2*86400000){
+    const mid = t0 + Math.floor((t1-t0)/2);
+    const a = await fetchSpan(t0, mid, minMag);
+    const b = await fetchSpan(mid, t1, minMag);
+    return a.concat(b);
+  }
+  return featuresToEvents(feats);
 }
 
 async function loadData(){
@@ -752,20 +804,32 @@ async function loadData(){
   const minMag = +document.getElementById("fMinMag").value;
   const y0 = +document.getElementById("fStart").value;
   const y1 = +document.getElementById("fEnd").value;
-  const years = [];
-  for(let y=y0; y<=y1; y++) years.push(y);
+  if(!(y1 >= y0)) return showError(new Error("el año inicial debe ser menor o igual al final"));
+
+  // bloques de YEARS_CHUNK años: 2000–2026 pasa de 27 peticiones a 6
+  const spans = [];
+  for(let y=y0; y<=y1; y+=YEARS_CHUNK){
+    const yn = Math.min(y+YEARS_CHUNK-1, y1);
+    spans.push([Date.UTC(y,0,1), Date.UTC(yn+1,0,1), y===yn ? `${y}` : `${y}–${yn}`]);
+  }
 
   showOverlay();
-  const all = [];
-  try{
-    for(let i=0;i<years.length;i++){
-      setOverlay(`Descargando ${years[i]}…`, i/years.length);
-      const evs = await fetchYear(years[i], minMag);
-      all.push(...evs);
+  const all = [], failed = [];
+  for(let i=0;i<spans.length;i++){
+    const [t0,t1,label] = spans[i];
+    setOverlay(`Descargando ${label}…`, i/spans.length);
+    try{
+      for(const e of await fetchSpan(t0, t1, minMag)) all.push(e);  // sin spread: puede haber decenas de miles
+    }catch(err){
+      failed.push({label, err});      // se anota y se sigue con los demás bloques
     }
-  }catch(err){
-    return showError(err);
   }
+  if(!all.length) return showError(failed.length ? failed[0].err
+                                                : new Error("la consulta no devolvió eventos"));
+  if(failed.length) showWarning(
+    `Faltan ${failed.length} de ${spans.length} bloques (${failed.map(f=>f.label).join(", ")}): `+
+    `${failed[0].err.message||failed[0].err}. Se muestra el resto de los datos.`);
+
   // almacén canónico por id (permite upsert en vivo)
   state.byId = new Map();
   for(const e of all) state.byId.set(e.id, e);
@@ -810,17 +874,10 @@ async function pollUpdates(){
   try{
     const minMag = +document.getElementById("fMinMag").value;
     const overlap = 2*3600*1000;    // 2 h de solape → captura revisiones
-    const start = new Date((state.lastPoll||Date.now()) - overlap).toISOString();
-    const p = new URLSearchParams({
-      format:"geojson", starttime:start,
-      minmagnitude:String(minMag),
-      minlatitude:BBOX.minlat, maxlatitude:BBOX.maxlat,
-      minlongitude:BBOX.minlon, maxlongitude:BBOX.maxlon,
-      orderby:"time-asc",
-    });
-    const res = await fetch(`${USGS}?${p.toString()}`);
-    if(!res.ok) throw new Error(`USGS ${res.status}`);
-    const evs = featuresToEvents((await res.json()).features);
+    const start = (state.lastPoll||Date.now()) - overlap;
+    // 2 intentos: si el sondeo falla, el siguiente ciclo (60 s) lo vuelve a intentar
+    const gj = await usgsFetch(usgsParams(start, Date.now()+60000, minMag), 2);
+    const evs = featuresToEvents(gj.features||[]);
     let added = 0;
     for(const e of evs){ if(!state.byId.has(e.id)) added++; state.byId.set(e.id, e); }
     state.raw = [...state.byId.values()];
@@ -1647,6 +1704,7 @@ async function togglePlates(on){
  * ============================================================= */
 function showOverlay(){const o=document.getElementById("overlay");
   o.classList.remove("hidden");document.getElementById("ovl-err").style.display="none";
+  const w=document.getElementById("warnToast"); if(w) w.style.display="none";
   document.getElementById("spin").style.display="block";
   document.getElementById("ovl-msg").style.display="block";
   document.querySelector(".progress").style.display="block";}
@@ -1659,12 +1717,26 @@ function showError(err){
   document.querySelector(".progress").style.display="none";
   const box=document.getElementById("ovl-err"); box.style.display="block";
   box.innerHTML = `<b>No se pudo contactar la API del USGS.</b><br>
-    Puede ser tu conexión o un bloqueo de red (CORS). Revisa el rango de años o
+    Se reintentó ${USGS_TRIES} veces sin éxito. Suele ser una caída puntual de la red o del
+    servicio; también puede ser un cortafuegos que bloquee <code>earthquake.usgs.gov</code>.
+    Prueba de nuevo, acorta el rango de años o
     <a id="loadFileLink" href="#">carga un archivo local</a> (GeoJSON o CSV del USGS,
     o el <code>.csv</code> que genera el script de Python).<br>
-    <span style="color:var(--faint)">Detalle: ${err.message||err}</span>`;
+    <span style="color:var(--faint)">Detalle: ${err.message||err}</span><br>
+    <button class="btn-retry" id="btnRetry">Reintentar</button>`;
   document.getElementById("loadFileLink").onclick=(ev)=>{ev.preventDefault();
     document.getElementById("fileInput").click();};
+  document.getElementById("btnRetry").onclick=()=>loadData();
+}
+/* aviso no bloqueante: la carga funcionó, pero incompleta */
+function showWarning(msg){
+  let t=document.getElementById("warnToast");
+  if(!t){ t=document.createElement("div"); t.id="warnToast"; document.body.appendChild(t); }
+  t.innerHTML=`<span class="x">✕</span><b>Datos incompletos.</b> ${msg}`;
+  t.style.display="block";
+  t.querySelector(".x").onclick=()=>{ t.style.display="none"; };
+  clearTimeout(showWarning._t);
+  showWarning._t=setTimeout(()=>{ t.style.display="none"; }, 15000);
 }
 
 /* carga desde archivo (fallback) */
