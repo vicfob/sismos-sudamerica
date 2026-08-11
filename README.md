@@ -1,5 +1,7 @@
 # 🌎 Observatorio Sísmico · Sudamérica
 
+<img width="1867" height="810" alt="image" src="https://github.com/user-attachments/assets/7ee1d9c6-7ca6-4587-ac4d-139a319141e3" />
+
 Dashboard interactivo y de código abierto para **analizar, visualizar y pronosticar
 sismicidad en Sudamérica** a partir de datos en tiempo real del USGS, con una sección
 dedicada a **Colombia** y una capa de **respuesta y ayuda ante emergencias**.
@@ -8,7 +10,7 @@ dedicada a **Colombia** y una capa de **respuesta y ayuda ante emergencias**.
 [![Datos: USGS](https://img.shields.io/badge/datos-USGS%20FDSN-blue.svg)](https://earthquake.usgs.gov/fdsnws/event/1/)
 [![Sin backend](https://img.shields.io/badge/backend-no%20requerido-brightgreen.svg)](#)
 
-Todo el dashboard es un **único archivo HTML** que corre en el navegador y consulta la
+Todo el dashboard es un **UN UNICO ARCHIVO** que corre en el navegador y consulta la
 API pública del USGS directamente: no necesita servidor, base de datos ni instalación.
 
 ---
@@ -62,15 +64,9 @@ responsable, ten presente que:
 
 ## 🚀 Uso
 
-### Opción A — Publicar en GitHub Pages (recomendado, para el público)
+### Opción A — Consulta directa en GH (recomendado, para el público)
 
-Como el dashboard es un solo archivo `index.html` sin backend, puedes publicarlo gratis:
-
-1. Sube este repositorio a GitHub.
-2. Ve a **Settings → Pages**.
-3. En *Source*, elige la rama `main` y la carpeta `/ (root)`.
-4. Guarda. En un minuto tendrás una URL pública tipo
-   `https://<tu-usuario>.github.io/<repo>/` lista para compartir.
+Puedes usar el dashboard directamente o descargarlo para uso personal o comercial siguiendo las normas de licencia. Vicfob desarrollada la herramienta como guia pero puede ser actualizada en cualquier momento
 
 ### Opción B — Uso local
 
@@ -146,3 +142,9 @@ y declustering configurable.
 ## 📄 Licencia
 
 Distribuido bajo la licencia **MIT**. Consulta [LICENSE](./LICENSE) para más detalles.
+
+<3 
+Dona a este proyecto por medio de Bre-b (sistema de pagos instantaneos colombiano) o por hash moneda virtuales
+
+Con cariño @vicfob
+
