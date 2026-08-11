@@ -51,6 +51,13 @@ responsable, ten presente que:
 - **Alerta de impacto PAGER**: banda destacada cuando el USGS clasifica un sismo como naranja
   o rojo, con enlace a la ficha oficial, al SGC y a la UNGRD. Los sismos con alerta se
   distinguen en el mapa con un anillo de color.
+- **Ficha de impacto**: para esos sismos se consultan los productos oficiales del USGS y se
+  traducen a lo que hace falta decidir — cuánta gente sintió cada nivel de intensidad, riesgo
+  de **deslizamientos y licuefacción** (que determinan qué vías se cortan y a qué comunidades
+  no llega la ayuda), **probabilidad oficial de réplicas** convertida en una recomendación
+  concreta, y ciudades afectadas por población. Cada bloque se dibuja solo si su dato llegó.
+- **Huella real de la sacudida**: contornos de ShakeMap sobre el mapa, en vez de un radio
+  estimado alrededor del epicentro.
 - **Doble fuente**: si el USGS no responde, conmuta automáticamente al espejo del EMSC y lo
   indica en la cabecera, sin duplicar sismos que lleguen por ambas redes.
 - **Mapa de calor** de epicentros ponderado por energía, con capas de puntos clicables y
@@ -124,6 +131,9 @@ del script.
 | Pronóstico temporal | Ley de Omori–Utsu e intensidad condicional ETAS | La proyección asume que no hay nuevos disparadores |
 | Intensidad | ShakeMap del USGS → DYFI → estimación propia | Se indica siempre de cuál de las tres proviene |
 | Alerta de impacto | Nivel PAGER del USGS (verde/amarillo/naranja/rojo) | Solo naranja y rojo disparan la banda de alerta |
+| Población expuesta | PAGER `exposures.json` | Habitantes por grado de intensidad |
+| Terreno | Producto `ground-failure` del USGS | Deslizamientos y licuefacción, con población expuesta |
+| Réplicas oficiales | Producto `oaf` (ETAS bayesiano del USGS) | Complementa al ajuste Omori–Utsu propio |
 
 ### Sobre la intensidad estimada
 

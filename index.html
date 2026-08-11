@@ -161,6 +161,40 @@ button{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.08e
   border:1px solid var(--hair2);color:var(--accent);background:var(--accent-glow)}
 .pb-act:hover{background:var(--accent-dim);color:#0a0d13}
 .pb-act.plain{color:var(--dim);background:transparent}
+/* Ficha de impacto dentro de la banda de alerta */
+.imp-box{padding:0 16px 15px 21px}
+.imp-load{font-size:12px;color:var(--faint);font-family:'JetBrains Mono',monospace}
+.imp-lead{font-size:13px;color:var(--dim);line-height:1.6;margin:0 0 12px}
+.imp-lead b{color:var(--text)}
+.imp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:12px}
+.imp-block{background:var(--surface2);border:1px solid var(--hair);border-radius:9px;padding:12px 14px}
+.imp-block h4{margin:0 0 9px;font-size:11px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--faint);font-weight:600}
+.imp-bars{display:flex;flex-direction:column;gap:6px}
+.imp-bar{display:grid;grid-template-columns:56px 1fr 78px;align-items:center;gap:8px;
+  font-family:'JetBrains Mono',monospace;font-size:11.5px}
+.imp-bl{color:var(--dim);text-align:right}
+.imp-bt{height:13px;background:var(--hair);border-radius:3px;overflow:hidden;display:block}
+.imp-bt i{display:block;height:100%;border-radius:0 3px 3px 0;min-width:2px}
+.imp-bv{color:var(--text);text-align:right;font-variant-numeric:tabular-nums}
+.imp-bd{grid-column:2/4;font-size:10.5px;color:var(--faint);margin-top:-3px;
+  font-family:'Inter',system-ui,sans-serif}
+.imp-gf{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--dim);
+  line-height:1.5;margin-bottom:9px}
+.imp-gf:last-child{margin-bottom:0}
+.imp-gf b{color:var(--text)}
+.imp-gfl{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.09em;
+  padding:2px 7px;border-radius:5px;color:#0a0d13;font-weight:700;white-space:nowrap;flex-shrink:0}
+.imp-note{font-size:11.5px;color:var(--faint);line-height:1.5}
+.imp-action{margin:9px 0 0;padding-top:9px;border-top:1px solid var(--hair);color:var(--dim)}
+.imp-action b{color:var(--m2)}
+.imp-tbl{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:11.5px}
+.imp-tbl th{text-align:left;font-weight:400;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);padding:0 8px 6px 0;border-bottom:1px solid var(--hair)}
+.imp-tbl td{padding:5px 8px 5px 0;color:var(--dim);border-bottom:1px solid var(--hair);
+  font-variant-numeric:tabular-nums}
+.imp-tbl tr:last-child td{border-bottom:none}
+.imp-tbl td:first-child{color:var(--text)}
 .src-tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;
   text-transform:uppercase;color:var(--faint)}
 .est-flag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;
@@ -1137,6 +1171,179 @@ function applyView(){
   renderPagerBand();
 }
 
+/* ============================================================= *
+ *  FICHA DE IMPACTO · productos del USGS para sismos con alerta
+ *  Convierte «hubo un sismo» en «esto es lo que hay que hacer»:
+ *  cuánta gente lo sufrió y con qué fuerza, si hay riesgo de
+ *  deslizamientos o licuefacción, y qué probabilidad hay de réplicas
+ *  fuertes. Todo son productos oficiales, gratuitos y con CORS abierto.
+ * ============================================================= */
+const impactCache = new Map();
+
+/* Los archivos de la ficha viven en el mismo servidor intermitente que el
+   catálogo, así que se reintentan. Si aun así fallan se devuelve null: la ficha
+   es complementaria y cada bloque se dibuja solo si su dato llegó. */
+async function jsonFetch(url, tries = 3, timeout = USGS_TIMEOUT){
+  if(!url) return null;
+  for(let attempt=0; attempt<tries; attempt++){
+    if(attempt) await sleep(500 * 2**(attempt-1));
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), timeout);
+    try{
+      const r = await fetch(url, {signal:ctrl.signal});
+      if(r.ok) return await r.json();
+      if(r.status < 500 && r.status !== 429) return null;   // no existe: no insistir
+    }catch(err){ /* se reintenta */ }
+    finally{ clearTimeout(timer); }
+  }
+  return null;
+}
+
+async function loadImpact(e){
+  if(impactCache.has(e.id)) return impactCache.get(e.id);
+  const detail = await usgsFetch(new URLSearchParams({format:"geojson", eventid:e.id}), 3);
+  const P     = (detail.properties && detail.properties.products) || {};
+  const first = k => P[k] && P[k][0];
+  const fileUrl = (prod, name) =>
+    prod && prod.contents && prod.contents[name] && prod.contents[name].url;
+
+  const pager = first("losspager"), gf = first("ground-failure"),
+        oafp  = first("oaf"),       sm = first("shakemap");
+
+  const [exp, los, cit, oaf] = await Promise.all([
+    jsonFetch(fileUrl(pager, "json/exposures.json")),
+    jsonFetch(fileUrl(pager, "json/losses.json")),
+    jsonFetch(fileUrl(pager, "json/cities.json")),
+    jsonFetch(fileUrl(oafp,  "forecast.json")),
+  ]);
+
+  const imp = {
+    exposure  : exp && exp.population_exposure,
+    fatalities: los && los.empirical_fatality && los.empirical_fatality.total_fatalities,
+    dollars   : los && los.empirical_economic && los.empirical_economic.total_dollars,
+    cities    : cit && (cit.onepager_cities || cit.cities),
+    ground    : gf && gf.properties,
+    oaf       : oaf && oaf.forecast,
+    contours  : fileUrl(sm, "download/cont_mmi.json"),
+  };
+  impactCache.set(e.id, imp);
+  return imp;
+}
+
+const milesES = n => Math.round(n).toLocaleString("es-CO");
+/* Devuelve la frase completa para que concuerde en español:
+   «1,2 millones de personas», «480 mil personas», «4.752 personas». */
+function personasCorto(n){
+  if(n >= 1e6){
+    const m = (n/1e6).toFixed(1).replace(".",",");
+    return `${m} ${m==="1,0"?"millón":"millones"} de personas`;
+  }
+  if(n >= 1e4) return `${Math.round(n/1e3)} mil personas`;
+  return `${milesES(n)} personas`;
+}
+function dineroCorto(d){
+  if(d >= 1e6) return `${milesES(d/1e6)} millones de dólares`;
+  return `${milesES(d)} dólares`;
+}
+const GF_COLOR = {green:"#3fae6a", yellow:"#e8c33c", orange:"#e8802b", red:"#e0344b"};
+const GF_NIVEL = {green:"bajo", yellow:"moderado", orange:"alto", red:"muy alto"};
+
+function impactHTML(imp){
+  const bloques = [];
+
+  /* Población expuesta: es la traducción de «M7.4» a «cuánta gente lo sufrió» */
+  if(imp.exposure && imp.exposure.mmi){
+    const {mmi, aggregated_exposure:pobl} = imp.exposure;
+    const filas = mmi.map((v,i)=>({mmi:v, n:pobl[i]||0})).filter(f=>f.n>0 && f.mmi>=4);
+    const max = Math.max(...filas.map(f=>f.n), 1);
+    if(filas.length) bloques.push(
+      `<div class="imp-block"><h4>Personas que sintieron el sismo, por intensidad</h4>
+        <div class="imp-bars">${filas.map(f=>{
+          const info = mmiInfo(f.mmi);
+          return `<div class="imp-bar">
+            <span class="imp-bl">MMI ${info.roman}</span>
+            <span class="imp-bt"><i style="width:${(100*f.n/max).toFixed(1)}%;background:${info.color}"></i></span>
+            <span class="imp-bv">${milesES(f.n)}</span>
+            <span class="imp-bd">${info.label}</span></div>`;
+        }).join("")}</div></div>`);
+  }
+
+  /* Deslizamientos y licuefacción: en los Andes deciden qué carreteras se cortan */
+  if(imp.ground){
+    const g = imp.ground, filas = [];
+    for(const [clave, nombre, nota] of [
+      ["landslide",    "Deslizamientos", "Puede cortar carreteras y aislar comunidades"],
+      ["liquefaction", "Licuefacción",   "El suelo pierde firmeza: daña cimientos y tuberías"]]){
+      const color = g[clave+"-alert"] || g[clave+"-population-alert-color"];
+      if(!color) continue;
+      const pob = g[clave+"-population-alert-value"];
+      filas.push(`<div class="imp-gf">
+        <span class="imp-gfl" style="background:${GF_COLOR[color]||"#586274"}">${(GF_NIVEL[color]||color).toUpperCase()}</span>
+        <span><b>${nombre}</b>${pob!=null?` · ${personasCorto(+pob)} en zona expuesta`:""}
+          <br><span class="imp-note">${nota}</span></span></div>`);
+    }
+    if(filas.length) bloques.push(
+      `<div class="imp-block"><h4>Efectos en el terreno</h4>${filas.join("")}</div>`);
+  }
+
+  /* Réplicas: el número importa menos que lo que implica */
+  if(imp.oaf && imp.oaf.length){
+    const prob = (b,m)=>{ const x=(b.bins||[]).find(k=>k.magnitude===m); return x?Math.round(x.probability*100):null; };
+    const etiqueta = {"1 Day":"Próximo día","1 Week":"Próxima semana","1 Month":"Próximo mes","1 Year":"Próximo año"};
+    const filas = imp.oaf.filter(b=>etiqueta[b.label]).map(b=>
+      `<tr><td>${etiqueta[b.label]}</td><td>${prob(b,5)??"—"} %</td><td>${prob(b,6)??"—"} %</td><td>${prob(b,7)??"—"} %</td></tr>`);
+    const semana = imp.oaf.find(b=>b.label==="1 Week");
+    const p6 = semana ? prob(semana,6) : null;
+    if(filas.length) bloques.push(
+      `<div class="imp-block"><h4>Probabilidad de réplicas — pronóstico oficial del USGS</h4>
+        <table class="imp-tbl"><thead><tr><th>Ventana</th><th>M5+</th><th>M6+</th><th>M7+</th></tr></thead>
+        <tbody>${filas.join("")}</tbody></table>
+        ${p6!=null?`<p class="imp-note imp-action">Con ${p6} % de probabilidad de un M6+ esta semana:
+          <b>no vuelvas a entrar a edificios agrietados</b>. Las réplicas derrumban lo que el sismo
+          principal dejó debilitado.</p>`:""}</div>`);
+  }
+
+  /* Ciudades: dónde está la gente que lo sufrió */
+  if(Array.isArray(imp.cities) && imp.cities.length){
+    const top = [...imp.cities].filter(c=>c.pop>20000)
+      .sort((a,b)=>b.pop-a.pop).slice(0,8);
+    if(top.length) bloques.push(
+      `<div class="imp-block"><h4>Ciudades más pobladas afectadas</h4>
+        <table class="imp-tbl"><thead><tr><th>Ciudad</th><th>Habitantes</th><th>Intensidad</th></tr></thead>
+        <tbody>${top.map(c=>`<tr><td>${c.name}</td><td>${milesES(c.pop)}</td>
+          <td><span class="mmi-badge" style="background:${mmiInfo(c.mmi).color};font-size:10px;padding:1px 6px">${mmiInfo(c.mmi).roman}</span></td></tr>`).join("")}</tbody></table></div>`);
+  }
+
+  if(!bloques.length) return "";
+  const cifras = [];
+  if(imp.fatalities!=null) cifras.push(`<b>${milesES(imp.fatalities)}</b> fallecidos estimados`);
+  if(imp.dollars!=null)    cifras.push(`pérdidas por <b>${dineroCorto(imp.dollars)}</b>`);
+  return `${cifras.length?`<p class="imp-lead">Estimación del USGS: ${cifras.join(" y ")}.
+      Son modelos estadísticos, no recuentos confirmados, y se revisan conforme llegan datos.</p>`:""}
+    <div class="imp-grid">${bloques.join("")}</div>`;
+}
+
+/* Huella real de la sacudida: contornos de ShakeMap sobre el mapa */
+let shakeLayer = null;
+async function toggleShakeMap(url, btn){
+  if(shakeLayer){
+    map.removeLayer(shakeLayer); shakeLayer = null;
+    btn.textContent = "Ver huella de la sacudida"; return;
+  }
+  btn.textContent = "Cargando…";
+  const gj = await jsonFetch(url);
+  if(!gj){ btn.textContent = "Huella no disponible"; return; }
+  shakeLayer = L.geoJSON(gj, {
+    style: f => ({color:mmiInfo(f.properties.value).color, weight:2, opacity:.9, fill:false}),
+    onEachFeature: (f, lyr) => {
+      const info = mmiInfo(f.properties.value);
+      lyr.bindTooltip(`MMI ${info.roman} — ${info.label}`, {sticky:true});
+    },
+  }).addTo(map);
+  try{ map.fitBounds(shakeLayer.getBounds(), {padding:[30,30]}); }catch(_){}
+  btn.textContent = "Ocultar huella de la sacudida";
+}
+
 /* Banda de alerta. Solo se muestra en sismos con alerta PAGER naranja o roja de
    los últimos 30 días: son los que exigen respuesta regional o nacional. Los
    verdes y amarillos no la disparan a propósito — una herramienta que alerta por
@@ -1195,7 +1402,31 @@ function renderPagerBand(){
        <a class="pb-act" href="https://www.sgc.gov.co/" target="_blank" rel="noopener">Servicio Geológico Colombiano ↗</a>
        <a class="pb-act" href="https://www.gestiondelriesgo.gov.co/" target="_blank" rel="noopener">UNGRD ↗</a>
        <a class="pb-act plain" href="#aid">Ir a respuesta y ayuda</a>
-     </div>`;
+     </div>
+     <div id="impactBox" class="imp-box"><span class="imp-load">Consultando el impacto estimado…</span></div>`;
+
+  fillImpact(e);
+}
+
+/* Carga la ficha de impacto sin bloquear la banda: si el USGS no responde, la
+   alerta sigue en pantalla con lo esencial y solo falta el detalle. */
+async function fillImpact(e){
+  const box = document.getElementById("impactBox");
+  if(!box) return;
+  let imp;
+  try{ imp = await loadImpact(e); }
+  catch(err){
+    box.innerHTML = `<span class="imp-load">No se pudo cargar el detalle de impacto
+      (${err.message||err}). La alerta y la intensidad de arriba siguen siendo válidas.</span>`;
+    return;
+  }
+  if(document.getElementById("impactBox") !== box) return;   // se recargó mientras tanto
+  const html = impactHTML(imp);
+  if(!html){ box.innerHTML = `<span class="imp-load">El USGS aún no publicó el detalle de impacto de este sismo.</span>`; return; }
+  box.innerHTML = html +
+    (imp.contours ? `<button class="pb-act" id="btnShake" type="button">Ver huella de la sacudida</button>` : "");
+  const btn = document.getElementById("btnShake");
+  if(btn) btn.onclick = () => toggleShakeMap(imp.contours, btn);
 }
 
 /* ============================================================= *
