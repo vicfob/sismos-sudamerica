@@ -1,0 +1,12 @@
+# Dependencias del script scripts/seismic_heatmap.py
+# Mínimas para ejecutar:
+requests>=2.31
+numpy>=1.24
+pandas>=2.0
+matplotlib>=3.7
+scipy>=1.10
+
+# Opcionales (mejoran el resultado):
+folium>=0.15      # heatmap interactivo en HTML
+pyarrow>=14.0     # cache en Parquet (si falta, usa CSV)
+cartopy>=0.22     # costas y límites en el mapa estático

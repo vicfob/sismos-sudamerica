@@ -1,0 +1,1799 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estación Sísmica · Sudamérica</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#090c12; --bg2:#0c1017; --surface:#121823; --surface2:#171f2c;
+  --hair:#212a3a; --hair2:#2e3a4e;
+  --text:#e8edf4; --dim:#8b98ab; --faint:#586274;
+  --accent:#4fd1c5; --accent-dim:#2b8f88; --accent-glow:rgba(79,209,197,.15);
+  /* escala de magnitud (energía) — cálida */
+  --m1:#ffe27a; --m2:#ffb44d; --m3:#ff7f3f; --m4:#ef4444; --m5:#a5183b;
+  --shadow:0 1px 0 rgba(255,255,255,.02), 0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{background:
+  radial-gradient(1200px 500px at 80% -10%, rgba(79,209,197,.06), transparent 60%),
+  radial-gradient(900px 600px at -10% 110%, rgba(239,68,68,.05), transparent 55%),
+  var(--bg);}
+a{color:var(--accent);text-decoration:none}
+
+/* ---------- readout / mono label helper ---------- */
+.mono{font-family:'JetBrains Mono',monospace}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--dim)}
+
+/* ---------- header ---------- */
+header{position:relative;overflow:hidden;border-bottom:1px solid var(--hair);
+  padding:26px clamp(16px,4vw,40px) 20px;background:linear-gradient(180deg,var(--bg2),transparent)}
+.trace{position:absolute;inset:0;width:100%;height:100%;opacity:.5;pointer-events:none}
+.trace path{fill:none;stroke:var(--accent);stroke-width:1;opacity:.14;
+  filter:drop-shadow(0 0 6px var(--accent-glow))}
+.h-top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;position:relative;z-index:1}
+h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(22px,3.4vw,34px);
+  letter-spacing:-.01em;margin:0;line-height:1}
+h1 .tick{color:var(--accent)}
+.sub{color:var(--dim);font-size:13px;max-width:60ch;margin:8px 0 0;position:relative;z-index:1}
+.station{margin-left:auto;text-align:right;position:relative;z-index:1}
+.station .id{font-size:12px;color:var(--faint)}
+.station .live{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);
+  cursor:pointer;user-select:none}
+.station .live.paused .dot{background:var(--faint);animation:none;box-shadow:none}
+.station .live.paused #liveLabel{color:var(--faint)}
+.dot.flash{background:var(--m3)!important;box-shadow:0 0 0 7px rgba(255,127,63,.25)!important}
+#lastUpdate.flash{color:var(--m3)}
+.ticker{padding:9px clamp(16px,4vw,40px);border-bottom:1px solid var(--hair);background:var(--bg2);
+  font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .4s}
+.ticker.flash{background:rgba(255,127,63,.09)}
+.ticker .tk-label{color:var(--faint);letter-spacing:.14em;text-transform:uppercase;
+  font-size:10px;margin-right:10px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 0 var(--accent);animation:pulse 2.4s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 var(--accent-glow)}70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+
+/* ---------- controls ---------- */
+.controls{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end;
+  padding:16px clamp(16px,4vw,40px);border-bottom:1px solid var(--hair);
+  background:var(--bg2)}
+.ctl{display:flex;flex-direction:column;gap:6px}
+.ctl label{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dim)}
+.ctl input[type=number]{width:96px}
+input[type=number]{background:var(--surface);border:1px solid var(--hair2);color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:14px;padding:8px 10px;border-radius:7px;outline:none}
+input[type=number]:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.range-wrap{display:flex;flex-direction:column;gap:4px;min-width:190px}
+.range-val{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--accent)}
+input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:3px;
+  background:var(--hair2);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);cursor:pointer;border:3px solid var(--bg2);box-shadow:0 0 8px var(--accent-glow)}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent);
+  cursor:pointer;border:3px solid var(--bg2)}
+button{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.08em;
+  text-transform:uppercase;cursor:pointer;border-radius:7px;padding:9px 16px;border:1px solid transparent;
+  transition:all .15s ease}
+.btn-primary{background:var(--accent);color:#04201d;font-weight:700}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-ghost{background:transparent;color:var(--dim);border-color:var(--hair2)}
+.btn-ghost:hover{color:var(--text);border-color:var(--accent-dim)}
+
+/* ---------- kpi readout ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+  background:var(--hair);border-bottom:1px solid var(--hair)}
+.kpi{background:var(--bg);padding:16px clamp(16px,4vw,40px)}
+.kpi .k-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:7px}
+.kpi .k-val{font-family:'JetBrains Mono',monospace;font-size:clamp(20px,2.4vw,28px);
+  font-weight:700;line-height:1;color:var(--text)}
+.kpi .k-unit{font-size:12px;color:var(--dim);font-weight:400;margin-left:4px}
+.kpi.hot .k-val{color:var(--m3)}
+
+/* ---------- grid ---------- */
+.grid{display:grid;gap:14px;padding:14px clamp(16px,4vw,40px) 40px;
+  grid-template-columns:1.35fr 1fr;grid-auto-rows:auto}
+.panel{background:linear-gradient(180deg,var(--surface),var(--bg2));
+  border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);
+  display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:13px 16px 10px;border-bottom:1px solid var(--hair)}
+.panel-head .t{display:flex;flex-direction:column;gap:3px}
+.panel-head h3{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;margin:0}
+.panel-head .desc{font-size:11.5px;color:var(--dim)}
+.panel-head .tag{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint);border:1px solid var(--hair2);
+  padding:3px 7px;border-radius:5px;white-space:nowrap}
+.panel-body{padding:8px;flex:1;min-height:0}
+.chart{width:100%;height:260px}
+
+/* map + cross-section span the left column emphasis */
+#map{height:440px;width:100%;border-radius:0 0 12px 12px;background:#0a0e14}
+.map-tools{display:flex;gap:6px;align-items:center}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;
+  font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);cursor:pointer;
+  border:1px solid var(--hair2);padding:5px 9px;border-radius:6px;user-select:none}
+.toggle.on{color:var(--accent);border-color:var(--accent-dim);background:var(--accent-glow)}
+.span2{grid-column:1 / -1}
+.tall .chart{height:320px}
+
+/* legend */
+.maglegend{display:flex;align-items:center;gap:8px;padding:8px 16px;font-family:'JetBrains Mono',monospace;
+  font-size:10.5px;color:var(--dim);border-top:1px solid var(--hair)}
+.maglegend .bar{height:8px;flex:1;border-radius:4px;
+  background:linear-gradient(90deg,var(--m1),var(--m2),var(--m3),var(--m4),var(--m5))}
+
+/* overlay */
+#overlay{position:fixed;inset:0;background:rgba(6,9,14,.92);z-index:9999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+  backdrop-filter:blur(3px);transition:opacity .4s}
+#overlay.hidden{opacity:0;pointer-events:none}
+.spinner{width:46px;height:46px;border-radius:50%;border:3px solid var(--hair2);
+  border-top-color:var(--accent);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#ovl-msg{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--dim);letter-spacing:.05em}
+.progress{width:min(340px,70vw);height:4px;background:var(--hair2);border-radius:3px;overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+.err-box{max-width:520px;text-align:center;color:var(--dim);font-size:13.5px;line-height:1.6}
+.err-box b{color:var(--m4)}
+#fileInput{display:none}
+
+footer.credits{padding:18px clamp(16px,4vw,40px) 32px;color:var(--faint);font-size:11.5px;
+  border-top:1px solid var(--hair);line-height:1.7}
+footer.credits code{font-family:'JetBrains Mono',monospace;color:var(--dim)}
+
+/* ---------- forecast panel ---------- */
+.fc-controls{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;
+  padding:12px 16px;border-bottom:1px solid var(--hair)}
+.fc-controls .range-wrap{min-width:160px}
+.fc-controls select{background:var(--surface);border:1px solid var(--hair2);color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:13px;padding:8px 10px;border-radius:7px;outline:none}
+.fc-controls select:focus{border-color:var(--accent)}
+.fc-note{padding:11px 16px;font-size:12px;color:var(--dim);border-bottom:1px solid var(--hair);line-height:1.65}
+.fc-note b{color:var(--m3)}
+.fc-body{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:14px 16px}
+@media(max-width:900px){.fc-body{grid-template-columns:1fr}}
+.fc-list{display:flex;flex-direction:column;min-width:0}
+.fc-list h4{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;margin:0 0 10px;color:var(--text)}
+table.zones{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px}
+table.zones th{text-align:left;color:var(--faint);font-weight:400;font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--hair2)}
+table.zones td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(--dim);white-space:nowrap}
+table.zones td.p{color:var(--text);font-weight:700}
+.pbar{position:relative;height:5px;border-radius:3px;background:var(--hair2);margin-top:5px;overflow:hidden;width:70px}
+.pbar i{display:block;height:100%;background:linear-gradient(90deg,#4361ee,#f77f00,#ef233c)}
+.fc-legend{display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;
+  font-size:10px;color:var(--faint);margin-top:12px}
+.fc-legend .bar{height:8px;width:120px;border-radius:4px;
+  background:linear-gradient(90deg,#2b3a67,#4361ee,#7209b7,#f77f00,#ef233c)}
+
+/* ---------- ETAS panel ---------- */
+.stat-chips{display:flex;flex-wrap:wrap;gap:1px;background:var(--hair);
+  border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+.chip{background:var(--bg);padding:12px 16px;flex:1 1 110px;min-width:110px}
+.chip .l{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+.chip .v{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;color:var(--text)}
+.chip .u{font-size:11px;color:var(--dim);font-weight:400;margin-left:3px}
+.callout{margin:14px 16px 6px;padding:14px 16px;border:1px solid var(--hair2);
+  border-left:3px solid var(--m3);border-radius:8px;
+  background:linear-gradient(180deg,rgba(255,127,63,.06),transparent)}
+.callout .big{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--m3)}
+.callout .csub{font-size:12px;color:var(--dim);margin-top:5px;line-height:1.55}
+.etas-charts{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:6px 16px 14px}
+@media(max-width:900px){.etas-charts{grid-template-columns:1fr}}
+.fc-note code{font-family:'JetBrains Mono',monospace;color:var(--accent);font-size:11px}
+
+/* ---------- sección Colombia ---------- */
+.co-wrap{border-top:2px solid var(--hair2);margin-top:6px;
+  background:linear-gradient(180deg,rgba(0,56,147,.05),transparent 240px)}
+.co-header{padding:28px clamp(16px,4vw,40px) 4px}
+.tricolor{display:flex;height:4px;width:66px;border-radius:3px;overflow:hidden;margin-bottom:15px}
+.tricolor i{flex:1}.tricolor .y{background:#FCD116}.tricolor .b{background:#003893}.tricolor .r{background:#CE1126}
+.co-header h2{font-family:'Space Grotesk',sans-serif;font-weight:700;
+  font-size:clamp(21px,3vw,30px);margin:0;letter-spacing:-.01em}
+.co-header .co-sub{color:var(--dim);font-size:13px;max-width:74ch;margin:9px 0 0}
+.co-highlight{margin:18px clamp(16px,4vw,40px) 0;padding:16px 18px;border:1px solid var(--hair2);
+  border-left:3px solid var(--m4);border-radius:10px;
+  background:linear-gradient(180deg,rgba(239,68,68,.07),transparent);
+  display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.co-highlight .hl-m{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;line-height:1}
+.co-highlight .hl-meta{font-size:12.5px;color:var(--dim);margin-top:5px}
+.co-highlight .hl-mmi{margin-left:auto;text-align:right}
+.co-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+  background:var(--hair);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);margin-top:18px}
+.co-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;padding:16px clamp(16px,4vw,40px) 8px}
+@media(max-width:900px){.co-grid{grid-template-columns:1fr}}
+#coMap{height:470px;border-radius:0 0 12px 12px;background:#0a0e14}
+.co-context{padding:10px clamp(16px,4vw,40px) 34px;color:var(--dim);font-size:12.5px;line-height:1.7;max-width:96ch}
+.co-context h4{font-family:'Space Grotesk',sans-serif;color:var(--text);font-size:14px;margin:15px 0 6px}
+.co-context a{color:var(--accent)}
+.mmi-badge{display:inline-block;padding:3px 9px;border-radius:6px;font-family:'JetBrains Mono',monospace;
+  font-weight:700;font-size:13px;color:#0a0d13}
+table.co-list{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px}
+table.co-list th{text-align:left;color:var(--faint);font-weight:400;font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--hair2)}
+table.co-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(--dim);vertical-align:middle}
+
+/* ---------- respuesta y ayuda ---------- */
+.aid-wrap{border-top:2px solid var(--hair2);padding-bottom:6px}
+.aid-header{padding:26px clamp(16px,4vw,40px) 4px}
+.aid-header h2{font-family:'Space Grotesk',sans-serif;font-weight:700;
+  font-size:clamp(20px,3vw,28px);margin:0;letter-spacing:-.01em}
+.aid-header .aid-sub{color:var(--dim);font-size:13px;max-width:78ch;margin:9px 0 0}
+.aid-geo{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;
+  font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim)}
+.aid-geo .pin{color:var(--accent)}
+.aid-geo select{background:var(--surface);border:1px solid var(--hair2);color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:12px;padding:6px 9px;border-radius:6px;outline:none}
+.aid-geo select:focus{border-color:var(--accent)}
+.aid-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:14px;padding:14px clamp(16px,4vw,40px) 6px}
+@media(max-width:900px){.aid-grid{grid-template-columns:1fr}}
+.aid-links{display:flex;flex-direction:column;gap:8px}
+.aid-link{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--hair2);
+  border-radius:9px;background:var(--surface);color:var(--text);text-decoration:none;
+  transition:all .15s;font-size:13px}
+.aid-link:hover{border-color:var(--accent-dim);background:var(--surface2)}
+.aid-link .ico{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.aid-link.gov .ico{background:#8bd450}
+.aid-link.live .ico{background:var(--m3);box-shadow:0 0 0 0 var(--m3);animation:pulse 2.4s infinite}
+.aid-link .arrow{margin-left:auto;color:var(--faint);font-family:'JetBrains Mono',monospace}
+.aid-caveat{margin:8px clamp(16px,4vw,40px) 0;padding:13px 16px;border:1px solid var(--hair2);
+  border-left:3px solid #ffb44d;border-radius:9px;
+  background:linear-gradient(180deg,rgba(255,180,77,.06),transparent);
+  font-size:12.5px;color:var(--dim);line-height:1.65}
+.aid-caveat b{color:#ffb44d}
+table.aid-list{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px}
+table.aid-list th{text-align:left;color:var(--faint);font-weight:400;font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--hair2)}
+table.aid-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(--dim);vertical-align:middle}
+
+/* reveal */
+.panel,.kpi{animation:rise .5s ease both}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+@media (max-width:900px){
+  .grid{grid-template-columns:1fr}
+  .station{margin-left:0;text-align:left}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+/* leaflet dark popup */
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface2);color:var(--text);
+  border:1px solid var(--hair2);box-shadow:var(--shadow)}
+.leaflet-popup-content{font-family:'JetBrains Mono',monospace;font-size:12px;margin:10px 12px}
+.leaflet-container{font-family:'Inter',sans-serif}
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <div class="spinner" id="spin"></div>
+  <div id="ovl-msg">Contactando la estación USGS…</div>
+  <div class="progress"><i id="ovl-bar"></i></div>
+  <div class="err-box" id="ovl-err" style="display:none"></div>
+  <input type="file" id="fileInput" accept=".geojson,.json,.csv">
+</div>
+
+<header>
+  <svg class="trace" preserveAspectRatio="none" viewBox="0 0 1200 160"><path id="tracePath"></path></svg>
+  <div class="h-top">
+    <h1>ESTACIÓN SÍSMICA <span class="tick">/</span> SUDAMÉRICA</h1>
+    <div class="station">
+      <div class="live" id="liveToggle" title="Actualización en tiempo real (clic para pausar)">
+        <span class="dot" id="liveDot"></span><span class="mono" id="liveLabel">EN VIVO</span></div>
+      <div class="id mono" id="lastUpdate">—</div>
+      <div class="id mono" id="stationRange">—</div>
+    </div>
+  </div>
+  <p class="sub">Catálogo histórico de epicentros bajo la placa de Nazca y el margen continental.
+     Densidad espacial, distribución magnitud–frecuencia (Gutenberg–Richter) y geometría del slab en profundidad.</p>
+</header>
+
+<div class="controls">
+  <div class="ctl">
+    <label>Magnitud mín · descarga</label>
+    <input type="number" id="fMinMag" value="4.5" step="0.1" min="2.5" max="7">
+  </div>
+  <div class="ctl">
+    <label>Desde año</label>
+    <input type="number" id="fStart" value="2000" min="1960" max="2026">
+  </div>
+  <div class="ctl">
+    <label>Hasta año</label>
+    <input type="number" id="fEnd" value="2026" min="1960" max="2026">
+  </div>
+  <div class="ctl">
+    <label>&nbsp;</label>
+    <button class="btn-primary" id="reload">Recargar datos</button>
+  </div>
+  <div class="range-wrap">
+    <label class="mono" style="font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">
+      Magnitud mín · vista <span class="range-val" id="vMagLbl">4.5</span></label>
+    <input type="range" id="vMag" min="4" max="8" step="0.1" value="4.5">
+  </div>
+  <div class="range-wrap">
+    <label class="mono" style="font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">
+      Profundidad máx · vista <span class="range-val" id="vDepthLbl">700 km</span></label>
+    <input type="range" id="vDepth" min="20" max="700" step="10" value="700">
+  </div>
+  <div class="ctl">
+    <label>&nbsp;</label>
+    <button class="btn-ghost" id="reset">Restablecer vista</button>
+  </div>
+  <div class="ctl">
+    <label>&nbsp;</label>
+    <button class="btn-ghost" id="download">Exportar CSV</button>
+  </div>
+</div>
+
+<div class="ticker" id="ticker"><span class="tk-label">Último evento</span> —</div>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="grid">
+  <!-- HERO: map -->
+  <section class="panel" style="grid-row:span 2">
+    <div class="panel-head">
+      <div class="t"><h3>Mapa de calor de epicentros</h3>
+        <span class="desc">Densidad ponderada por energía liberada</span></div>
+      <div class="map-tools">
+        <span class="toggle on" id="tHeat">Calor</span>
+        <span class="toggle" id="tPoints">Puntos</span>
+        <span class="toggle" id="tPlates">Placas</span>
+        <span class="toggle" id="tForecast">Pronóstico</span>
+      </div>
+    </div>
+    <div class="panel-body" style="padding:0"><div id="map"></div></div>
+    <div class="maglegend"><span>M4</span><div class="bar"></div><span>M8+</span></div>
+  </section>
+
+  <!-- Gutenberg-Richter -->
+  <section class="panel">
+    <div class="panel-head">
+      <div class="t"><h3>Gutenberg–Richter</h3>
+        <span class="desc">Frecuencia acumulada N(≥M) · ajuste del valor-b</span></div>
+      <span class="tag" id="grTag">b = —</span>
+    </div>
+    <div class="panel-body"><div id="chartGR" class="chart"></div></div>
+  </section>
+
+  <!-- Magnitud histograma -->
+  <section class="panel">
+    <div class="panel-head">
+      <div class="t"><h3>Distribución de magnitud</h3>
+        <span class="desc">Conteo por intervalos de 0.2</span></div>
+      <span class="tag">HISTOGRAMA</span>
+    </div>
+    <div class="panel-body"><div id="chartMag" class="chart"></div></div>
+  </section>
+
+  <!-- SIGNATURE: depth cross-section (Wadati-Benioff) -->
+  <section class="panel tall span2">
+    <div class="panel-head">
+      <div class="t"><h3>Corte en profundidad · geometría del slab</h3>
+        <span class="desc">Longitud × profundidad, color por magnitud — revela la subducción de Nazca (zona de Wadati-Benioff)</span></div>
+      <span class="tag">SECCIÓN OESTE→ESTE</span>
+    </div>
+    <div class="panel-body"><div id="chartSlab" class="chart"></div></div>
+  </section>
+
+  <!-- Timeline -->
+  <section class="panel">
+    <div class="panel-head">
+      <div class="t"><h3>Actividad por año</h3>
+        <span class="desc">Nº de eventos registrados</span></div>
+      <span class="tag">SERIE TEMPORAL</span>
+    </div>
+    <div class="panel-body"><div id="chartTime" class="chart"></div></div>
+  </section>
+
+  <!-- Depth histogram -->
+  <section class="panel">
+    <div class="panel-head">
+      <div class="t"><h3>Distribución de profundidad</h3>
+        <span class="desc">Someros (&lt;70 km) vs intermedios y profundos</span></div>
+      <span class="tag">HISTOGRAMA</span>
+    </div>
+    <div class="panel-body"><div id="chartDepth" class="chart"></div></div>
+  </section>
+
+  <!-- PRONÓSTICO PROBABILÍSTICO -->
+  <section class="panel span2" id="panelForecast">
+    <div class="panel-head">
+      <div class="t"><h3>Pronóstico probabilístico de sismicidad</h3>
+        <span class="desc">Sismicidad suavizada + Poisson · probabilidad de ≥1 evento M≥M₀ por celda en la ventana</span></div>
+      <span class="tag" id="fcTag">—</span>
+    </div>
+    <div class="fc-controls">
+      <div class="range-wrap">
+        <label class="mono" style="font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">
+          Magnitud objetivo M₀ <span class="range-val" id="fcM0Lbl">5.0</span></label>
+        <input type="range" id="fcM0" min="4.5" max="8" step="0.1" value="5.0">
+      </div>
+      <div class="ctl"><label>Ventana</label>
+        <select id="fcT">
+          <option value="1">1 año</option><option value="5">5 años</option>
+          <option value="10" selected>10 años</option><option value="30">30 años</option>
+          <option value="50">50 años</option></select></div>
+      <div class="ctl"><label>Resolución</label>
+        <select id="fcRes">
+          <option value="0.5">0.5°</option><option value="1" selected>1.0°</option>
+          <option value="2">2.0°</option></select></div>
+      <div class="range-wrap">
+        <label class="mono" style="font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">
+          Suavizado σ <span class="range-val" id="fcSigLbl">75 km</span></label>
+        <input type="range" id="fcSig" min="25" max="200" step="5" value="75"></div>
+    </div>
+    <div class="fc-note">
+      <b>No predice sismos individuales.</b> Estima, para cada celda, la probabilidad de al menos un
+      evento de magnitud ≥ M₀ en la ventana elegida, combinando una tasa de sismicidad suavizada
+      espacialmente (kernel gaussiano) con la ley de Gutenberg–Richter regional y un proceso de Poisson.
+      Es una línea base tipo CSEP; su fiabilidad depende de que la Mc de la vista sea correcta y de la completitud del catálogo.
+    </div>
+    <div class="fc-body">
+      <div class="fc-list">
+        <h4>Zonas de mayor probabilidad · posibles epicentros</h4>
+        <table class="zones"><thead><tr>
+          <th>#</th><th>Centro lat, lon</th><th>λ /año</th><th>Retorno</th><th>P(ventana)</th>
+        </tr></thead><tbody id="fcRows"></tbody></table>
+        <div class="fc-legend"><span>baja</span><div class="bar"></div><span>alta</span>
+          <span style="margin-left:auto">activa «Pronóstico» en el mapa ↗</span></div>
+      </div>
+      <div><div id="chartReturn" class="chart"></div></div>
+    </div>
+  </section>
+
+  <!-- ETAS / OMORI · PRONÓSTICO TEMPORAL -->
+  <section class="panel span2" id="panelETAS">
+    <div class="panel-head">
+      <div class="t"><h3>Pronóstico temporal · ETAS / Omori</h3>
+        <span class="desc">Proceso auto-excitante: decaimiento de réplicas (Omori-Utsu) e intensidad condicional λ(t)</span></div>
+      <span class="tag" id="etTag">—</span>
+    </div>
+    <div class="fc-controls">
+      <div class="ctl"><label>Sismo principal</label>
+        <select id="etMain" style="min-width:280px"></select></div>
+      <div class="ctl"><label>Horizonte</label>
+        <select id="etHorizon">
+          <option value="1">1 día</option><option value="7" selected>7 días</option>
+          <option value="30">30 días</option><option value="90">90 días</option></select></div>
+      <div class="range-wrap">
+        <label class="mono" style="font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">
+          α · productividad <span class="range-val" id="etAlphaLbl">2.3</span></label>
+        <input type="range" id="etAlpha" min="1.0" max="3.0" step="0.1" value="2.3"></div>
+    </div>
+    <div class="fc-note">
+      <b>No predice el próximo sismo.</b> Ajusta la ley de Omori-Utsu <code>n(t)=K/(t+c)ᵖ</code> a la
+      secuencia real por máxima verosimilitud y calcula la intensidad condicional
+      <code>λ(t)=μ+Σ K·e^{α(Mᵢ−Mc)}/(t−tᵢ+c)ᵖ</code>. La proyección es la tasa esperada suponiendo que
+      no ocurran nuevos disparadores; un evento grande la reinicia. μ (fondo) se estima empíricamente y
+      α es un supuesto ajustable (~2.3 ≈ b·ln10).
+    </div>
+    <div class="stat-chips" id="etChips"></div>
+    <div class="callout" id="etCallout"></div>
+    <div class="etas-charts">
+      <div><div id="chartOmori" class="chart"></div></div>
+      <div><div id="chartIntensity" class="chart"></div></div>
+    </div>
+  </section>
+</div>
+
+<!-- ===================== SECCIÓN COLOMBIA ===================== -->
+<div class="co-wrap">
+  <div class="co-header">
+    <div class="tricolor"><i class="y"></i><i class="b"></i><i class="r"></i></div>
+    <h2>Colombia · sismicidad nacional</h2>
+    <p class="co-sub">Vista dedicada al territorio colombiano, en la convergencia de las placas de
+      Nazca, Caribe y Sudamérica. <b>Haz clic en cualquier epicentro</b> para ver su potencial de daño
+      estimado (intensidad de Mercalli) y la energía liberada.</p>
+    <div class="fc-controls" style="border-bottom:none;padding:14px 0 0">
+      <div class="range-wrap">
+        <label class="mono" style="font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">
+          Magnitud mín <span class="range-val" id="coMagLbl">4.5</span></label>
+        <input type="range" id="coMag" min="4" max="8" step="0.1" value="4.5"></div>
+      <div class="map-tools" style="align-self:flex-end">
+        <span class="toggle on" id="coTHeat">Calor</span>
+        <span class="toggle on" id="coTPoints">Puntos</span>
+        <span class="toggle" id="coTNest">Nido Bucaramanga</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="co-highlight" id="coHighlight"></div>
+  <div class="co-kpis" id="coKpis"></div>
+
+  <div class="co-grid">
+    <section class="panel">
+      <div class="panel-head">
+        <div class="t"><h3>Mapa sísmico de Colombia</h3>
+          <span class="desc">Clic en un epicentro → intensidad y energía estimadas</span></div>
+      </div>
+      <div class="panel-body" style="padding:0"><div id="coMap"></div></div>
+      <div class="maglegend"><span>M4</span><div class="bar"></div><span>M8+</span></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div class="t"><h3>Profundidad en Colombia</h3>
+          <span class="desc">Corteza somera vs. nido profundo (~150 km)</span></div>
+        <span class="tag">HISTOGRAMA</span>
+      </div>
+      <div class="panel-body"><div id="coDepth" class="chart" style="height:196px"></div></div>
+      <div class="panel-head" style="border-top:1px solid var(--hair)">
+        <div class="t"><h3>Sismos destacados</h3>
+          <span class="desc">Mayor magnitud · con intensidad estimada</span></div>
+      </div>
+      <div class="panel-body" style="overflow:auto;max-height:260px">
+        <table class="co-list"><thead><tr>
+          <th>Fecha</th><th>M</th><th>Prof.</th><th>Lugar</th><th>MMI</th>
+        </tr></thead><tbody id="coRows"></tbody></table>
+      </div>
+    </section>
+  </div>
+
+  <div class="co-context">
+    <h4>Contexto tectónico</h4>
+    Colombia se asienta sobre la convergencia de tres placas —Nazca, Caribe y Sudamérica—, lo que la hace
+    uno de los países más sísmicamente activos de la región; el SGC estima del orden de 2.500 sismos al mes,
+    la mayoría imperceptibles. La subducción de Nazca bajo el margen Pacífico (Nariño, Cauca, Chocó) genera
+    los eventos de mayor magnitud, mientras que fallas corticales como el sistema Frontal de la Cordillera
+    Oriental —el piedemonte llanero, cercano al Meta— y el sistema Romeral producen sismicidad somera.
+    <h4>El nido sísmico de Bucaramanga</h4>
+    Bajo Santander (~6.8°N, 73.1°O), a unos 150 km de profundidad, se concentra uno de los focos de
+    sismicidad intermedia más densos del mundo. Por su profundidad, la mayoría de estos sismos se sienten
+    poco en superficie pese a su frecuencia — de ahí el segundo pico del histograma de profundidad.
+    <h4>Evento reciente de gran magnitud</h4>
+    El 10 de agosto de 2026, un sismo de magnitud preliminar 7,4 con epicentro en San José del Palmar
+    (Chocó) y profundidad intermedia (~80–110 km) sacudió el occidente del país y se sintió en Cali,
+    Pereira, Manizales, Medellín y Bogotá, con víctimas mortales y daños estructurales; el SGC lo describió
+    como el mayor en una década. Las cifras de afectación son preliminares y cambian: consulta las fuentes
+    oficiales <a href="https://www.sgc.gov.co/" target="_blank" rel="noopener">SGC</a> y
+    <a href="https://www.gestiondelriesgo.gov.co/" target="_blank" rel="noopener">UNGRD</a>.
+    <h4>Sismos históricos de referencia</h4>
+    Tumaco 1979 (M~8.1, con tsunami), Popayán 1983 (M~5.5) y Armenia/Quindío 1999 (M~6.2, ~1.900 víctimas).
+    <br><br>
+    <span style="color:var(--faint)">Datos: USGS en tiempo real. El «potencial de daño» al hacer clic es una
+    <b>estimación</b> de intensidad de Mercalli a partir de magnitud y profundidad, no daño observado; la
+    intensidad real depende de la geología local, el tipo de suelo y la construcción.</span>
+  </div>
+</div>
+
+<!-- ===================== RESPUESTA Y AYUDA ===================== -->
+<div class="aid-wrap" id="aid">
+  <div class="aid-header">
+    <h2>Respuesta y ayuda ante emergencias</h2>
+    <p class="aid-sub">Sismos recientes en Sudamérica y canales oficiales de ayuda. Los enlaces abren
+      <b>fuentes en vivo</b> —medios y cuentas oficiales—, de modo que la información siempre esté actualizada
+      en lugar de depender de datos que caducan.</p>
+    <div class="aid-geo">
+      <span class="pin">◉</span><span id="aidGeo">Detectando ubicación aproximada por IP…</span>
+      <span style="margin-left:8px;color:var(--faint)">País:</span>
+      <select id="aidCountry"></select>
+    </div>
+  </div>
+  <div class="aid-grid">
+    <section class="panel">
+      <div class="panel-head">
+        <div class="t"><h3>Sismos recientes en Sudamérica</h3>
+          <span class="desc">Últimos 30 días · distancia desde tu ubicación</span></div>
+        <span class="tag">EN VIVO</span>
+      </div>
+      <div class="panel-body" style="overflow:auto;max-height:340px">
+        <table class="aid-list"><thead><tr>
+          <th>Cuándo</th><th>M</th><th>Lugar</th><th>MMI</th><th>Distancia</th>
+        </tr></thead><tbody id="aidEvents"></tbody></table>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-head">
+        <div class="t"><h3>Canales oficiales de ayuda</h3>
+          <span class="desc" id="aidChannelsSub">Según tu país</span></div>
+      </div>
+      <div class="panel-body"><div class="aid-links" id="aidChannels"></div></div>
+    </section>
+  </div>
+  <div class="aid-caveat">
+    <b>Dona con cabeza.</b> Usa únicamente canales oficiales para donaciones económicas y
+    <b>verifica antes de transferir dinero</b> o entregar bienes. Los puntos de acopio cambian a diario:
+    consulta los enlaces en vivo y llama antes de desplazarte. Entrega solo lo solicitado —agua, alimentos
+    no perecederos, aseo, primeros auxilios— y desconfía de cuentas o enlaces no oficiales. La ubicación por
+    IP es aproximada y se usa solo para mostrarte lo más cercano.
+  </div>
+</div>
+
+<footer class="credits">
+  Datos: <a href="https://earthquake.usgs.gov/fdsnws/event/1/" target="_blank" rel="noopener">USGS FDSN Event Web Service</a>
+  · Mapa base © <a href="https://carto.com/" target="_blank" rel="noopener">CARTO</a> / © OpenStreetMap
+  · Límites de placas: <a href="https://github.com/fraxen/tectonicplates" target="_blank" rel="noopener">Ahlenius / PB2002</a>.
+  <br>
+  El valor-b se estima por máxima verosimilitud (Aki–Utsu) tomando la magnitud mínima de la vista como magnitud de completitud (Mc);
+  ajusta el deslizador de <code>Magnitud mín · vista</code> hasta que caiga cerca del pico del histograma para una estimación fiable.
+  Este panel describe sismicidad histórica; no constituye una predicción de sismos.
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script>
+"use strict";
+/* ============================================================= *
+ *  Estado y configuración
+ * ============================================================= */
+const BBOX = {minlat:-56, maxlat:13, minlon:-82, maxlon:-34};
+const USGS = "https://earthquake.usgs.gov/fdsnws/event/1/query";
+const PLATES_URL = "https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json";
+
+const state = {
+  raw: [],        // todos los eventos descargados
+  view: [],       // eventos tras filtros de vista
+  byId: null,     // Map id -> evento (permite upsert en vivo)
+  minMagView: 4.5,
+  depthMaxView: 700,
+  // tiempo real
+  live: false, polling: false, lastPoll: null,
+  pollTimer: null, liveTimer: null,
+};
+const POLL_MS = 60000;   // USGS refresca ~cada minuto
+
+/* color por magnitud (escala cálida = energía) */
+const MAG_STOPS = [
+  [4, "#ffe27a"], [4.8,"#ffb44d"], [5.6,"#ff7f3f"], [6.4,"#ef4444"], [7.5,"#a5183b"]
+];
+function magColor(m){
+  let c = MAG_STOPS[0][1];
+  for(const [thr,col] of MAG_STOPS){ if(m>=thr) c=col; }
+  return c;
+}
+
+/* ===== Medida de daño estimada por sismo ===== */
+// energía sísmica (Gutenberg-Richter): log10 E = 1.5 M + 4.8  (E en julios)
+function seismicEnergy(m){ return Math.pow(10, 1.5*m + 4.8); }
+function energyString(m){
+  const tnt = seismicEnergy(m)/4.184e9;        // toneladas de TNT
+  if(tnt < 1)     return (tnt*1000).toFixed(0)+" kg TNT";
+  if(tnt < 1000)  return tnt.toFixed(tnt<10?1:0)+" t TNT";
+  const kt = tnt/1000;
+  if(kt < 1000)   return kt.toFixed(kt<10?1:0)+" kt TNT";
+  return (kt/1000).toFixed(1)+" Mt TNT";
+}
+// Intensidad máxima estimada en el epicentro (Mercalli) a partir de M y profundidad.
+// IPE simplificada: la profundidad atenúa la intensidad (por eso un sismo profundo
+// grande se siente poco en superficie). Aproximación, no daño observado.
+function estimatedMMI(m, depth){
+  const R = Math.sqrt(depth*depth + 36);       // dist. hipocentral al sitio (~6 km)
+  const mmi = 1.5*m - 3.0*Math.log10(R) + 2.5;
+  return Math.max(1, Math.min(12, mmi));
+}
+const MMI_SCALE = [
+  [1,  "I",     "No sentido",                    "#3fb8c4"],
+  [2,  "II–III","Sentido levemente (interiores)","#4fd1c5"],
+  [4,  "IV",    "Sentido ampliamente, sin daños", "#8bd450"],
+  [5,  "V",     "Sentido por todos; objetos se mueven","#ffe27a"],
+  [6,  "VI",    "Daños leves (grietas, revoques)","#ffb44d"],
+  [7,  "VII",   "Daños moderados",                "#ff7f3f"],
+  [8,  "VIII",  "Daños considerables",            "#ef4444"],
+  [9,  "IX",    "Daños graves; colapsos parciales","#d1263f"],
+  [10, "X",     "Destrucción generalizada",       "#a5183b"],
+  [11, "XI–XII","Catastrófico",                   "#6d0f28"],
+];
+function mmiInfo(mmi){
+  let e = MMI_SCALE[0];
+  for(const s of MMI_SCALE){ if(mmi >= s[0]) e = s; }
+  return {roman:e[1], label:e[2], color:e[3]};
+}
+function damagePopup(e){
+  const info = mmiInfo(estimatedMMI(e.mag, e.depth));
+  const date = new Date(e.time).toISOString().slice(0,10);
+  return `<div style="min-width:196px">
+    <b style="color:${magColor(e.mag)};font-size:14px">M ${e.mag.toFixed(1)}</b>
+      &nbsp;·&nbsp; ${e.depth.toFixed(0)} km &nbsp;·&nbsp; ${date}<br>
+    <span style="color:#8b98ab">${e.place||''}</span>
+    <hr style="border:none;border-top:1px solid #2e3a4e;margin:8px 0">
+    <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#586274;margin-bottom:5px">
+      Potencial de daño (estimado)</div>
+    <div><span style="display:inline-block;padding:3px 9px;border-radius:6px;background:${info.color};
+      color:#0a0d13;font-weight:700">MMI ${info.roman}</span>
+      <span style="margin-left:7px">${info.label}</span></div>
+    <div style="font-size:11.5px;color:#8b98ab;margin-top:7px">Energía ≈ ${energyString(e.mag)}</div>
+  </div>`;
+}
+
+/* ============================================================= *
+ *  Descarga USGS (chunk por año → respeta el tope de 20k)
+ * ============================================================= */
+/* mapea features GeoJSON del USGS a eventos internos */
+function featuresToEvents(features){
+  return features
+    .filter(f => (f.properties.type||"earthquake")==="earthquake")
+    .map(f => ({
+      id:f.id,
+      time:f.properties.time,
+      mag:f.properties.mag,
+      depth:f.geometry.coordinates[2],
+      lon:f.geometry.coordinates[0],
+      lat:f.geometry.coordinates[1],
+      place:f.properties.place||"",
+    }))
+    .filter(e => e.mag!=null && e.lat!=null && e.lon!=null && e.depth!=null);
+}
+
+async function fetchYear(year, minMag){
+  const p = new URLSearchParams({
+    format:"geojson",
+    starttime:`${year}-01-01`, endtime:`${year+1}-01-01`,
+    minmagnitude:String(minMag),
+    minlatitude:BBOX.minlat, maxlatitude:BBOX.maxlat,
+    minlongitude:BBOX.minlon, maxlongitude:BBOX.maxlon,
+    orderby:"time-asc",
+  });
+  const res = await fetch(`${USGS}?${p.toString()}`);
+  if(!res.ok) throw new Error(`USGS ${res.status}`);
+  const gj = await res.json();
+  return featuresToEvents(gj.features);
+}
+
+async function loadData(){
+  stopLive();                       // limpia temporizadores previos si se recarga
+  const minMag = +document.getElementById("fMinMag").value;
+  const y0 = +document.getElementById("fStart").value;
+  const y1 = +document.getElementById("fEnd").value;
+  const years = [];
+  for(let y=y0; y<=y1; y++) years.push(y);
+
+  showOverlay();
+  const all = [];
+  try{
+    for(let i=0;i<years.length;i++){
+      setOverlay(`Descargando ${years[i]}…`, i/years.length);
+      const evs = await fetchYear(years[i], minMag);
+      all.push(...evs);
+    }
+  }catch(err){
+    return showError(err);
+  }
+  // almacén canónico por id (permite upsert en vivo)
+  state.byId = new Map();
+  for(const e of all) state.byId.set(e.id, e);
+  state.raw = [...state.byId.values()];
+  state.lastPoll = Date.now();
+
+  // ajusta límites de sliders de vista al mínimo descargado
+  const vMag = document.getElementById("vMag");
+  vMag.min = minMag; if(+vMag.value < minMag) vMag.value = minMag;
+  state.minMagView = +vMag.value;
+  document.getElementById("vMagLbl").textContent = (+vMag.value).toFixed(1);
+
+  hideOverlay();
+  applyView();
+  updateTicker();
+  startLive();                      // activa el modo en vivo tras la carga
+
+  // ubicación por IP (asíncrona) → refina canales de ayuda y marca el mapa
+  geolocateIP().then(g=>{
+    populateAidCountry();
+    renderAid();
+    addUserMarker();
+  });
+}
+
+let userMarker;
+function addUserMarker(){
+  if(!coMap || !state.geo || !isFinite(state.geo.lat)) return;
+  if(userMarker) coMap.removeLayer(userMarker);
+  userMarker=L.circleMarker([state.geo.lat,state.geo.lon],
+    {radius:7,color:"#4fd1c5",weight:3,fillColor:"#0a0d13",fillOpacity:1})
+    .bindPopup("Tu ubicación aproximada (por IP)");
+  userMarker.addTo(coMap);
+}
+
+/* ============================================================= *
+ *  TIEMPO REAL · sondeo del USGS y fusión incremental
+ * ============================================================= */
+async function pollUpdates(){
+  if(state.polling || !state.byId) return;
+  state.polling = true;
+  try{
+    const minMag = +document.getElementById("fMinMag").value;
+    const overlap = 2*3600*1000;    // 2 h de solape → captura revisiones
+    const start = new Date((state.lastPoll||Date.now()) - overlap).toISOString();
+    const p = new URLSearchParams({
+      format:"geojson", starttime:start,
+      minmagnitude:String(minMag),
+      minlatitude:BBOX.minlat, maxlatitude:BBOX.maxlat,
+      minlongitude:BBOX.minlon, maxlongitude:BBOX.maxlon,
+      orderby:"time-asc",
+    });
+    const res = await fetch(`${USGS}?${p.toString()}`);
+    if(!res.ok) throw new Error(`USGS ${res.status}`);
+    const evs = featuresToEvents((await res.json()).features);
+    let added = 0;
+    for(const e of evs){ if(!state.byId.has(e.id)) added++; state.byId.set(e.id, e); }
+    state.raw = [...state.byId.values()];
+    state.lastPoll = Date.now();
+    updateLiveUI(added);
+    updateTicker();
+    if(added>0) applyView();        // solo re-renderiza si llegó algo nuevo
+  }catch(err){
+    document.getElementById("liveLabel").textContent = "SIN CONEXIÓN";
+  }finally{ state.polling = false; }
+}
+
+function startLive(){
+  if(state.pollTimer) return;
+  state.live = true;
+  const tg=document.getElementById("liveToggle");
+  tg.classList.remove("paused");
+  document.getElementById("liveLabel").textContent = "EN VIVO";
+  state.pollTimer = setInterval(pollUpdates, POLL_MS);
+  state.liveTimer = setInterval(tickLive, 1000);
+  tickLive();
+}
+function stopLive(){
+  clearInterval(state.pollTimer); clearInterval(state.liveTimer);
+  state.pollTimer = state.liveTimer = null; state.live = false;
+  const tg=document.getElementById("liveToggle");
+  if(tg){ tg.classList.add("paused"); document.getElementById("liveLabel").textContent="PAUSADO"; }
+}
+function tickLive(){
+  if(!state.live) return;
+  const s = Math.round((Date.now()-(state.lastPoll||Date.now()))/1000);
+  const el = document.getElementById("lastUpdate");
+  if(!el.classList.contains("flash")) el.textContent = `actualizado hace ${s}s`;
+}
+function updateLiveUI(added){
+  const el = document.getElementById("lastUpdate");
+  const now = new Date().toLocaleTimeString("es",{hour12:false});
+  if(added>0){
+    el.textContent = `+${added} nuevo${added>1?'s':''} · ${now}`;
+    el.classList.add("flash");
+    const dot = document.getElementById("liveDot"); dot.classList.add("flash");
+    const tk = document.getElementById("ticker"); tk.classList.add("flash");
+    setTimeout(()=>{ el.classList.remove("flash"); dot.classList.remove("flash"); tk.classList.remove("flash"); }, 1600);
+  }
+}
+function updateTicker(){
+  if(!state.raw.length) return;
+  let latest = state.raw[0];
+  for(const e of state.raw) if(e.time > latest.time) latest = e;
+  const min = Math.round((Date.now()-latest.time)/60000);
+  const ago = min<60 ? `hace ${min} min` : min<1440 ? `hace ${Math.round(min/60)} h` : `hace ${Math.round(min/1440)} d`;
+  document.getElementById("ticker").innerHTML =
+    `<span class="tk-label">Último evento</span>`+
+    `<b style="color:${magColor(latest.mag)}">M ${latest.mag.toFixed(1)}</b> · `+
+    `${latest.depth.toFixed(0)} km · ${latest.place||'—'} · `+
+    `${new Date(latest.time).toISOString().slice(11,16)} UTC · ${ago}`;
+}
+
+/* ============================================================= *
+ *  Filtros de vista (instantáneos, sin volver a descargar)
+ * ============================================================= */
+function applyView(){
+  state.view = state.raw.filter(e =>
+    e.mag >= state.minMagView && e.depth <= state.depthMaxView);
+  renderAll();
+}
+
+/* ============================================================= *
+ *  Estadística
+ * ============================================================= */
+function bValueAki(mags, mc){
+  // Aki-Utsu MLE con corrección de binning (Δm=0.1)
+  if(mags.length<2) return null;
+  const mean = mags.reduce((a,b)=>a+b,0)/mags.length;
+  const b = Math.log10(Math.E) / (mean - (mc - 0.05));
+  return b;
+}
+
+function grData(mags, mc){
+  // frecuencia acumulada N(>=M) en pasos de 0.1
+  const step=0.1;
+  const maxM = Math.max(...mags);
+  const bins=[]; 
+  for(let m=mc; m<=maxM+1e-9; m+=step) bins.push(+m.toFixed(2));
+  const cum = bins.map(m => mags.filter(x => x >= m-1e-9).length);
+  const b = bValueAki(mags.filter(x=>x>=mc), mc);
+  // línea de ajuste: log10 N = a - b*M, anclada en (mc, N_total)
+  const Ntot = mags.filter(x=>x>=mc).length;
+  const a = Math.log10(Ntot) + b*mc;
+  const fitY = bins.map(m => Math.pow(10, a - b*m));
+  return {bins, cum, fitY, b};
+}
+
+/* ============================================================= *
+ *  Plotly — tema oscuro común
+ * ============================================================= */
+const FONT = {family:"JetBrains Mono, monospace", color:"#8b98ab", size:11};
+function layout(extra){
+  return Object.assign({
+    paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)",
+    font:FONT, margin:{l:48,r:14,t:10,b:38}, showlegend:false,
+    xaxis:{gridcolor:"#1b2331", zerolinecolor:"#1b2331", linecolor:"#2e3a4e",
+           tickfont:FONT, automargin:true},
+    yaxis:{gridcolor:"#1b2331", zerolinecolor:"#1b2331", linecolor:"#2e3a4e",
+           tickfont:FONT, automargin:true},
+  }, extra);
+}
+const CONFIG = {displayModeBar:false, responsive:true};
+
+/* ============================================================= *
+ *  Render
+ * ============================================================= */
+let map, heatLayer, pointsLayer, platesLayer=null, platesLoaded=false, fcLayer;
+function initMap(){
+  map = L.map("map",{zoomControl:true, attributionControl:true, preferCanvas:true})
+        .setView([-20,-65], 3);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{
+    attribution:'© OpenStreetMap © CARTO', subdomains:"abcd", maxZoom:11
+  }).addTo(map);
+  pointsLayer = L.layerGroup();
+  fcLayer = L.layerGroup();
+}
+
+function renderMap(){
+  const pts = state.view.map(e => {
+    const w = Math.min(1, Math.pow(10, 0.4*(e.mag - state.minMagView))/8 + 0.15);
+    return [e.lat, e.lon, w];
+  });
+  if(heatLayer) map.removeLayer(heatLayer);
+  heatLayer = L.heatLayer(pts,{radius:11, blur:9, minOpacity:.28, max:1,
+    gradient:{0.2:"#3fb8c4",0.4:"#ffe27a",0.6:"#ffb44d",0.8:"#ff7f3f",1:"#ef4444"}});
+  if(document.getElementById("tHeat").classList.contains("on")) heatLayer.addTo(map);
+
+  pointsLayer.clearLayers();
+  // limita a los mayores para no saturar el DOM
+  const big = [...state.view].sort((a,b)=>b.mag-a.mag).slice(0,1200);
+  for(const e of big){
+    L.circleMarker([e.lat,e.lon],{
+      radius:Math.max(2, (e.mag-3)*1.6), color:magColor(e.mag),
+      weight:1, fillColor:magColor(e.mag), fillOpacity:.55
+    }).bindPopup(damagePopup(e), {maxWidth:280}).addTo(pointsLayer);
+  }
+  if(document.getElementById("tPoints").classList.contains("on")) pointsLayer.addTo(map);
+}
+
+function renderGR(){
+  const mags = state.view.map(e=>e.mag);
+  if(!mags.length) return;
+  const {bins,cum,fitY,b} = grData(mags, state.minMagView);
+  document.getElementById("grTag").textContent = `b = ${b.toFixed(2)}`;
+  Plotly.react("chartGR",[
+    {x:bins,y:cum,mode:"markers",type:"scatter",name:"N(≥M)",
+     marker:{color:"#4fd1c5",size:6}},
+    {x:bins,y:fitY,mode:"lines",name:"ajuste",
+     line:{color:"#ef4444",width:2,dash:"dot"}},
+  ], layout({yaxis:{type:"log",gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT,
+      title:{text:"N acumulado",font:FONT}},
+     xaxis:{title:{text:"Magnitud",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT}}), CONFIG);
+}
+
+function renderMagHist(){
+  const mags = state.view.map(e=>e.mag);
+  Plotly.react("chartMag",[{
+    x:mags, type:"histogram", xbins:{start:state.minMagView,size:0.2},
+    marker:{color:"#ff8a4c",line:{color:"#0c1017",width:.5}},
+  }], layout({bargap:.03,
+     xaxis:{title:{text:"Magnitud",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT},
+     yaxis:{title:{text:"Eventos",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT}}), CONFIG);
+}
+
+function renderSlab(){
+  // corte longitud × profundidad, color por magnitud → geometría de subducción
+  const e = state.view;
+  Plotly.react("chartSlab",[{
+    x:e.map(d=>d.lon), y:e.map(d=>d.depth),
+    mode:"markers", type:"scattergl",
+    marker:{
+      size:e.map(d=>Math.max(3,(d.mag-3)*2)),
+      color:e.map(d=>d.mag), colorscale:[
+        [0,"#ffe27a"],[.35,"#ffb44d"],[.6,"#ff7f3f"],[.8,"#ef4444"],[1,"#a5183b"]],
+      cmin:4, cmax:8, opacity:.6,
+      colorbar:{title:{text:"M",font:FONT},tickfont:FONT,thickness:10,len:.8,
+                outlinewidth:0,x:1.01}
+    },
+    text:e.map(d=>`M${d.mag.toFixed(1)} · ${d.depth.toFixed(0)}km`),
+    hoverinfo:"text",
+  }], layout({margin:{l:52,r:60,t:10,b:40},
+     xaxis:{title:{text:"Longitud (O → E)",font:FONT},gridcolor:"#1b2331",
+            linecolor:"#2e3a4e",tickfont:FONT,range:[BBOX.minlon,BBOX.maxlon]},
+     yaxis:{title:{text:"Profundidad (km)",font:FONT},autorange:"reversed",
+            gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT}}), CONFIG);
+}
+
+function renderTimeline(){
+  const byYear = {};
+  for(const e of state.view){
+    const y = new Date(e.time).getUTCFullYear();
+    byYear[y]=(byYear[y]||0)+1;
+  }
+  const xs = Object.keys(byYear).map(Number).sort((a,b)=>a-b);
+  Plotly.react("chartTime",[{
+    x:xs, y:xs.map(y=>byYear[y]), type:"scatter", mode:"lines",
+    fill:"tozeroy", line:{color:"#4fd1c5",width:2},
+    fillcolor:"rgba(79,209,197,.12)",
+  }], layout({
+     xaxis:{title:{text:"Año",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT},
+     yaxis:{title:{text:"Eventos",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT}}), CONFIG);
+}
+
+function renderDepthHist(){
+  const d = state.view.map(e=>e.depth);
+  Plotly.react("chartDepth",[{
+    x:d, type:"histogram", xbins:{start:0,size:25},
+    marker:{color:"#3fb8c4",line:{color:"#0c1017",width:.5}},
+  }], layout({bargap:.03,
+     xaxis:{title:{text:"Profundidad (km)",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT},
+     yaxis:{title:{text:"Eventos",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT}}), CONFIG);
+}
+
+function renderKPIs(){
+  const v = state.view;
+  const n = v.length;
+  const maxM = n? Math.max(...v.map(e=>e.mag)) : 0;
+  const b = n? bValueAki(v.map(e=>e.mag), state.minMagView) : 0;
+  const medDepth = n? median(v.map(e=>e.depth)) : 0;
+  const shallow = n? (100*v.filter(e=>e.depth<70).length/n) : 0;
+  const kpis = [
+    {l:"Eventos", v:n.toLocaleString("es"), u:""},
+    {l:"Magnitud máx", v:maxM.toFixed(1), u:"M", hot:true},
+    {l:"Valor-b (G–R)", v:b?b.toFixed(2):"—", u:""},
+    {l:"Prof. mediana", v:medDepth.toFixed(0), u:"km"},
+    {l:"Someros <70km", v:shallow.toFixed(0), u:"%"},
+  ];
+  document.getElementById("kpis").innerHTML = kpis.map(k=>
+    `<div class="kpi ${k.hot?'hot':''}"><div class="k-label">${k.l}</div>
+     <div class="k-val">${k.v}<span class="k-unit">${k.u}</span></div></div>`).join("");
+  // rango temporal en el header
+  if(n){
+    const times = v.map(e=>e.time);
+    const a = new Date(Math.min(...times)).toISOString().slice(0,10);
+    const z = new Date(Math.max(...times)).toISOString().slice(0,10);
+    document.getElementById("stationRange").textContent = `${a} → ${z}`;
+  }
+}
+
+function median(arr){
+  if(!arr.length) return 0;
+  const s=[...arr].sort((a,b)=>a-b); const m=Math.floor(s.length/2);
+  return s.length%2? s[m] : (s[m-1]+s[m])/2;
+}
+
+function renderAll(){
+  renderKPIs(); renderMap(); renderGR(); renderMagHist();
+  renderSlab(); renderTimeline(); renderDepthHist();
+  buildForecast(); renderForecastPanel(); renderReturnPeriod(); renderForecastMap();
+  renderETAS();
+  renderColombia();
+  renderAid();
+}
+
+/* ============================================================= *
+ *  PRONÓSTICO PROBABILÍSTICO  (sismicidad suavizada + Poisson)
+ * ============================================================= */
+const forecast = {cells:[], b:1, years:1, params:{M0:5.0, T:10, res:1.0, sigma:75}};
+
+function extent(arr){let mn=Infinity,mx=-Infinity;for(const v of arr){if(v<mn)mn=v;if(v>mx)mx=v;}return [mn,mx];}
+
+function buildForecast(){
+  const e = state.view;
+  const {M0,T,res,sigma} = forecast.params;
+  if(e.length < 50){ forecast.cells=[]; return; }
+
+  const Mc = state.minMagView;
+  const b = bValueAki(e.map(x=>x.mag), Mc) || 1.0;
+  const [tmin,tmax] = extent(e.map(x=>x.time));
+  const years = Math.max(1, (tmax - tmin)/(365.25*864e5));
+
+  const nx = Math.ceil((BBOX.maxlon-BBOX.minlon)/res);
+  const ny = Math.ceil((BBOX.maxlat-BBOX.minlat)/res);
+  const grid = new Float64Array(nx*ny);
+
+  // kernel gaussiano (σ en grados; ~111 km por grado)
+  const sigDeg = sigma/111;
+  const rad = Math.max(1, Math.ceil(3*sigDeg/res));
+  const inv2s2 = 1/(2*sigDeg*sigDeg);
+
+  for(const ev of e){
+    const cx = Math.floor((ev.lon-BBOX.minlon)/res);
+    const cy = Math.floor((ev.lat-BBOX.minlat)/res);
+    let norm=0; const contrib=[];
+    for(let dy=-rad;dy<=rad;dy++) for(let dx=-rad;dx<=rad;dx++){
+      const gx=cx+dx, gy=cy+dy;
+      if(gx<0||gy<0||gx>=nx||gy>=ny) continue;
+      const d2 = (dx*res)*(dx*res)+(dy*res)*(dy*res);
+      const w = Math.exp(-d2*inv2s2);
+      norm += w; contrib.push([gy*nx+gx, w]);
+    }
+    if(norm>0) for(const [idx,w] of contrib) grid[idx] += w/norm;  // conserva el conteo
+  }
+
+  const cells=[];
+  for(let gy=0; gy<ny; gy++) for(let gx=0; gx<nx; gx++){
+    const cnt = grid[gy*nx+gx];
+    if(cnt < 0.05) continue;
+    const rateMc  = cnt/years;                             // eventos ≥Mc por año
+    const lambda  = rateMc*Math.pow(10, -b*(M0-Mc));       // escala G–R a M0
+    const p = 1 - Math.exp(-lambda*T);                     // Poisson: ≥1 evento
+    if(p < 1e-4) continue;
+    cells.push({
+      lat0:BBOX.minlat+gy*res, lon0:BBOX.minlon+gx*res, res,
+      latc:BBOX.minlat+(gy+0.5)*res, lonc:BBOX.minlon+(gx+0.5)*res,
+      lambda, p, cnt
+    });
+  }
+  cells.sort((a,b)=>b.p-a.p);
+  forecast.cells=cells; forecast.b=b; forecast.years=years;
+}
+
+/* rampa de "peligrosidad": azul → púrpura → ámbar → rojo (distinta del calor de magnitud) */
+const FC_STOPS=[[0,[43,58,103]],[0.25,[67,97,238]],[0.5,[114,9,183]],[0.75,[247,127,0]],[1,[239,35,60]]];
+function fcColor(t){
+  t=Math.max(0,Math.min(1,t));
+  for(let i=1;i<FC_STOPS.length;i++){
+    if(t<=FC_STOPS[i][0]){
+      const [t0,c0]=FC_STOPS[i-1], [t1,c1]=FC_STOPS[i];
+      const f=(t-t0)/(t1-t0||1);
+      const c=c0.map((v,k)=>Math.round(v+(c1[k]-v)*f));
+      return `rgb(${c[0]},${c[1]},${c[2]})`;
+    }
+  }
+  return "rgb(239,35,60)";
+}
+
+function renderForecastMap(){
+  if(!fcLayer) return;
+  fcLayer.clearLayers();
+  const cells=forecast.cells; if(!cells.length) return;
+  const pmax=cells[0].p||1;
+  for(const c of cells.slice(0,600)){
+    const t=c.p/pmax;
+    L.rectangle([[c.lat0,c.lon0],[c.lat0+c.res,c.lon0+c.res]],{
+      stroke:false, fillColor:fcColor(t), fillOpacity:0.12+0.5*t
+    }).bindPopup(
+      `<b>P = ${(c.p*100).toFixed(1)}%</b> · M≥${forecast.params.M0.toFixed(1)} / ${forecast.params.T} a<br>`+
+      `λ ${c.lambda.toExponential(2)} /año<br>${c.latc.toFixed(1)}, ${c.lonc.toFixed(1)}`
+    ).addTo(fcLayer);
+  }
+}
+
+function renderForecastPanel(){
+  document.getElementById("fcTag").textContent =
+    `P(M≥${forecast.params.M0.toFixed(1)} · ${forecast.params.T} a)`;
+  const rows=document.getElementById("fcRows");
+  const top=forecast.cells.slice(0,10);
+  const pmax=top.length? top[0].p : 1;
+  rows.innerHTML = top.map((c,i)=>{
+    const rp=1/c.lambda;
+    return `<tr><td>${i+1}</td>
+      <td>${c.latc.toFixed(1)}, ${c.lonc.toFixed(1)}</td>
+      <td>${c.lambda.toExponential(1)}</td>
+      <td>${rp<10000? Math.round(rp)+' a' : '—'}</td>
+      <td class="p">${(c.p*100).toFixed(1)}%
+        <div class="pbar"><i style="width:${(100*c.p/pmax).toFixed(0)}%"></i></div></td></tr>`;
+  }).join("") || `<tr><td colspan="5" style="color:var(--faint)">Sin datos suficientes en la vista.</td></tr>`;
+}
+
+function renderReturnPeriod(){
+  const e=state.view; if(!e.length){Plotly.purge("chartReturn");return;}
+  const Mc=state.minMagView;
+  const b=forecast.b || bValueAki(e.map(x=>x.mag),Mc) || 1;
+  const years=forecast.years || 1;
+  const Ntot=e.length;
+  const [,maxM]=extent(e.map(x=>x.mag));
+  const Ms=[], RP=[];
+  for(let M=Mc; M<=maxM+1; M+=0.1){
+    const lam=(Ntot/years)*Math.pow(10,-b*(M-Mc));
+    Ms.push(+M.toFixed(1)); RP.push(1/lam);
+  }
+  const M0=forecast.params.M0;
+  const lamM0=(Ntot/years)*Math.pow(10,-b*(M0-Mc));
+  Plotly.react("chartReturn",[
+    {x:Ms,y:RP,mode:"lines",line:{color:"#f77f00",width:2},name:"retorno"},
+    {x:[M0],y:[1/lamM0],mode:"markers",
+     marker:{color:"#ef233c",size:11,symbol:"diamond",line:{color:"#0c1017",width:1}},name:"M₀"},
+  ], layout({margin:{l:58,r:14,t:10,b:38},
+     xaxis:{title:{text:"Magnitud",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT},
+     yaxis:{type:"log",title:{text:"Periodo de retorno (años)",font:FONT},
+            gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT}}), CONFIG);
+}
+
+/* ============================================================= *
+ *  ETAS / OMORI · pronóstico temporal
+ * ============================================================= */
+const etas = {alpha:2.3, horizon:7};
+const DAY = 864e5;
+
+function haversine(la1,lo1,la2,lo2){
+  const R=6371, r=Math.PI/180;
+  const dla=(la2-la1)*r, dlo=(lo2-lo1)*r;
+  const a=Math.sin(dla/2)**2 + Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dlo/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+// ventana espacial de réplicas (Gardner-Knopoff): radio en km
+function gkRadius(m){ return Math.pow(10, 0.1238*m + 0.983); }
+
+// ∫_a^b (t+c)^-p dt
+function omoriInteg(a,b,c,p){
+  if(Math.abs(p-1)<1e-9) return Math.log((b+c)/(a+c));
+  return (Math.pow(b+c,1-p)-Math.pow(a+c,1-p))/(1-p);
+}
+
+// MLE de Omori-Utsu (perfila K, malla en p,c). times = días desde el principal (>0)
+function fitOmori(times, T){
+  const N=times.length; if(N<5) return null;
+  const S=Math.max(times[0], 1/1440);          // ≥ 1 min
+  let sum, best=null;
+  for(let p=0.6; p<=2.001; p+=0.05){
+    for(let k=-2.6; k<=0.31; k+=0.1){
+      const c=Math.pow(10,k);                   // c ∈ [0.0025, 2] días
+      const integ=omoriInteg(S,T,c,p);
+      if(integ<=0||!isFinite(integ)) continue;
+      const K=N/integ;
+      sum=0; for(const t of times) sum+=Math.log(t+c);
+      const logL=N*Math.log(K) - p*sum - N;
+      if(!best || logL>best.logL) best={p:+p.toFixed(2),c,K,logL,N,S,T};
+    }
+  }
+  return best;
+}
+
+// fondo μ (por día): cuantil bajo de conteos mensuales
+function estimateMu(events){
+  if(events.length<2) return 0;
+  const [tmin,tmax]=extent(events.map(e=>e.time));
+  const months=Math.max(1,Math.ceil((tmax-tmin)/(30*DAY)));
+  const bins=new Array(months).fill(0);
+  for(const e of events){ const b=Math.min(months-1,Math.floor((e.time-tmin)/(30*DAY))); bins[b]++; }
+  bins.sort((a,b)=>a-b);
+  const q=bins[Math.floor(0.15*bins.length)];   // percentil 15
+  return q/30;                                   // por día
+}
+
+function etasIntensity(tDays, ev, Kx, alpha, c, p, mu, Mc){
+  let lam=mu;
+  for(const e of ev){ const dt=tDays-e.tDay; if(dt<=0) break;
+    lam += Kx*Math.exp(alpha*(e.mag-Mc))*Math.pow(dt+c, -p); }
+  return lam;
+}
+
+function populateMainshocks(){
+  const cands=[...state.view].sort((a,b)=>b.mag-a.mag).slice(0,15);
+  const sel=document.getElementById("etMain");
+  const prev=sel.value;
+  sel.innerHTML=cands.map(e=>
+    `<option value="${e.id}">M${e.mag.toFixed(1)} · ${new Date(e.time).toISOString().slice(0,10)} · ${(e.place||'').slice(0,30)}</option>`
+  ).join("");
+  if(cands.some(e=>e.id===prev)) sel.value=prev;
+  return cands;
+}
+
+function renderETAS(){
+  const ev=state.view;
+  const chips=document.getElementById("etChips");
+  const callout=document.getElementById("etCallout");
+  if(ev.length<50){ chips.innerHTML=""; callout.innerHTML=
+    `<div class="csub">Se necesitan más eventos en la vista para ajustar la secuencia.</div>`;
+    Plotly.purge("chartOmori"); Plotly.purge("chartIntensity"); return; }
+
+  const Mc=state.minMagView;
+  const b=bValueAki(ev.map(e=>e.mag),Mc)||1;
+  const alpha=etas.alpha, D=etas.horizon;
+  const M0=forecast.params.M0;
+
+  const cands=populateMainshocks();
+  const sel=document.getElementById("etMain");
+  const main=ev.find(e=>e.id===sel.value) || cands[0];
+
+  // réplicas: mismo hemisferio temporal + radio GK, M≥Mc
+  const R=gkRadius(main.mag);
+  const after=ev.filter(e=> e.time>main.time && haversine(main.lat,main.lon,e.lat,e.lon)<=R)
+                .map(e=>(e.time-main.time)/DAY).filter(t=>t>0).sort((a,b)=>a-b);
+
+  const [,tmaxV]=extent(ev.map(e=>e.time));
+  const tNow=(tmaxV-main.time)/DAY;             // "ahora" = último evento del catálogo
+
+  const fit=fitOmori(after, Math.max(tNow, after.length?after[after.length-1]:1));
+  document.getElementById("etTag").textContent =
+    fit? `p=${fit.p.toFixed(2)} · ${after.length} réplicas` : "secuencia corta";
+
+  // productividad ETAS por-evento derivada del ajuste del principal
+  const Kx = fit ? fit.K/Math.exp(alpha*(main.mag-Mc)) : 0;
+  const mu = estimateMu(ev);
+
+  // pronóstico de réplicas en próximos D días (desde ahora)
+  let fMc=0, fM0=0;
+  if(fit){
+    fMc=fit.K*omoriInteg(tNow, tNow+D, fit.c, fit.p);
+    fM0=fMc*Math.pow(10,-b*(M0-Mc));
+  }
+
+  // chips
+  const chipData = fit ? [
+    {l:"p (Omori)", v:fit.p.toFixed(2), u:""},
+    {l:"c", v:fit.c.toFixed(3), u:"d"},
+    {l:"K", v:fit.K.toFixed(1), u:""},
+    {l:"Réplicas", v:after.length, u:""},
+    {l:"μ fondo", v:mu.toFixed(2), u:"/d"},
+  ] : [{l:"estado",v:"—",u:""}];
+  chips.innerHTML=chipData.map(c=>
+    `<div class="chip"><div class="l">${c.l}</div><div class="v">${c.v}<span class="u">${c.u}</span></div></div>`).join("");
+
+  callout.innerHTML = fit ?
+    `<div class="big">≈ ${fMc.toFixed(fMc<10?1:0)} réplicas M≥${Mc.toFixed(1)}</div>
+     <div class="csub">esperadas en los próximos <b>${D} días</b> para la secuencia de
+     <b>M${main.mag.toFixed(1)}</b> (${new Date(main.time).toISOString().slice(0,10)}), radio ${R.toFixed(0)} km.
+     De ellas, ≈ <b>${fM0.toFixed(fM0<10?2:0)}</b> serían M≥${M0.toFixed(1)}.
+     Un nuevo sismo importante reiniciaría el conteo.</div>`
+    : `<div class="csub">La secuencia seleccionada tiene pocas réplicas registradas para un ajuste fiable.</div>`;
+
+  renderOmoriChart(after, fit, Mc);
+  renderIntensityChart(ev, Kx, alpha, fit, mu, Mc, tNow, D, main);
+}
+
+function renderOmoriChart(after, fit, Mc){
+  if(!fit || after.length<5){ Plotly.purge("chartOmori"); return; }
+  // tasa observada en bins log-espaciados
+  const S=fit.S, T=fit.T, nb=14;
+  const edges=[]; for(let i=0;i<=nb;i++) edges.push(S*Math.pow(T/S, i/nb));
+  const cx=[], rate=[];
+  for(let i=0;i<nb;i++){
+    const lo=edges[i], hi=edges[i+1];
+    const cnt=after.filter(t=>t>=lo&&t<hi).length;
+    if(cnt>0){ cx.push(Math.sqrt(lo*hi)); rate.push(cnt/(hi-lo)); }
+  }
+  const fx=[], fy=[];
+  for(let i=0;i<=60;i++){ const t=S*Math.pow(T/S,i/60); fx.push(t); fy.push(fit.K/Math.pow(t+fit.c,fit.p)); }
+  Plotly.react("chartOmori",[
+    {x:cx,y:rate,mode:"markers",marker:{color:"#4fd1c5",size:7},name:"observado"},
+    {x:fx,y:fy,mode:"lines",line:{color:"#ef4444",width:2},name:"Omori"},
+  ], layout({margin:{l:56,r:12,t:22,b:40},
+     title:{text:"Decaimiento de réplicas (Omori-Utsu)",font:{...FONT,size:11},x:0,xanchor:"left"},
+     xaxis:{type:"log",title:{text:"Días desde el principal",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT},
+     yaxis:{type:"log",title:{text:"Tasa (/día)",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT}}), CONFIG);
+}
+
+function renderIntensityChart(ev, Kx, alpha, fit, mu, Mc, tNow, D, main){
+  if(!fit){ Plotly.purge("chartIntensity"); return; }
+  const [tmin,tmax]=extent(ev.map(e=>e.time));
+  const spanDays=(tmax-tmin)/DAY;
+  // pre-cálculo: eventos con tiempo en días desde tmin (para la sumatoria)
+  const evd=ev.map(e=>({tDay:(e.time-tmin)/DAY, mag:e.mag})).sort((a,b)=>a.tDay-b.tDay);
+  const c=fit.c, p=fit.p;
+  // observado
+  const N=200, xs=[], ys=[];
+  for(let i=0;i<=N;i++){ const td=spanDays*i/N;
+    xs.push(new Date(tmin+td*DAY)); ys.push(etasIntensity(td,evd,Kx,alpha,c,p,mu,Mc)); }
+  // proyección D días (misma historia, sin nuevos eventos)
+  const px=[], py=[];
+  const M=40;
+  for(let i=0;i<=M;i++){ const td=spanDays + D*i/M;
+    px.push(new Date(tmin+td*DAY)); py.push(etasIntensity(td,evd,Kx,alpha,c,p,mu,Mc)); }
+  const lamNow=py[0];
+  Plotly.react("chartIntensity",[
+    {x:xs,y:ys,mode:"lines",line:{color:"#4fd1c5",width:1.4},fill:"tozeroy",
+     fillcolor:"rgba(79,209,197,.08)",name:"λ(t)"},
+    {x:px,y:py,mode:"lines",line:{color:"#ff7f3f",width:2,dash:"dot"},name:"proyección"},
+  ], layout({margin:{l:56,r:12,t:22,b:36},
+     title:{text:`Intensidad condicional λ(t) · ahora ≈ ${lamNow.toFixed(2)}/día`,font:{...FONT,size:11},x:0,xanchor:"left"},
+     xaxis:{title:{text:"",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT},
+     yaxis:{type:"log",title:{text:"λ eventos/día",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT}}), CONFIG);
+}
+
+/* ============================================================= *
+ *  SECCIÓN COLOMBIA
+ * ============================================================= */
+// polígono aproximado del territorio colombiano (lat,lon)
+const CO_POLY=[
+ [12.5,-71.7],[11.2,-73.4],[9.4,-75.6],[8.7,-76.9],[7.9,-77.4],
+ [6.0,-77.9],[4.0,-77.6],[2.2,-78.8],[1.3,-79.0],[0.4,-77.5],
+ [-0.5,-75.3],[-2.0,-71.4],[-4.2,-69.95],[-1.2,-69.6],[1.2,-67.0],
+ [3.0,-67.8],[6.2,-67.4],[7.1,-70.8],[9.3,-72.4],[11.1,-71.9],[12.5,-71.7]
+];
+function inColombia(lat,lon){
+  let inside=false;
+  for(let i=0,j=CO_POLY.length-1;i<CO_POLY.length;j=i++){
+    const yi=CO_POLY[i][0],xi=CO_POLY[i][1],yj=CO_POLY[j][0],xj=CO_POLY[j][1];
+    if(((yi>lat)!==(yj>lat)) && (lon < (xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+
+let coMap, coHeat, coPoints, coNest;
+function initCoMap(){
+  coMap=L.map("coMap",{preferCanvas:true, zoomControl:true}).setView([4.6,-74], 5);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    {attribution:"© OpenStreetMap © CARTO", subdomains:"abcd", maxZoom:11}).addTo(coMap);
+  coPoints=L.layerGroup().addTo(coMap);
+  coNest=L.layerGroup();
+  L.circleMarker([6.85,-73.13],{radius:10,color:"#7209b7",weight:2,
+    fillColor:"#7209b7",fillOpacity:.22})
+   .bindPopup("<b>Nido Sísmico de Bucaramanga</b><br>~150 km de profundidad<br>"+
+     "Foco de sismicidad intermedia de los más densos del mundo").addTo(coNest);
+}
+
+function renderColombia(){
+  if(!state.raw.length) return;
+  const coMinMag=+document.getElementById("coMag").value;
+  const coAll=state.raw.filter(e=>inColombia(e.lat,e.lon));
+  const ev=coAll.filter(e=>e.mag>=coMinMag);
+
+  renderCoKpis(ev);
+  renderCoHighlight(coAll);
+
+  if(!coMap) initCoMap();
+
+  // heatmap
+  const pts=ev.map(e=>[e.lat,e.lon, Math.min(1, Math.pow(10,0.4*(e.mag-coMinMag))/8 + 0.15)]);
+  if(coHeat) coMap.removeLayer(coHeat);
+  coHeat=L.heatLayer(pts,{radius:12,blur:9,minOpacity:.3,max:1,
+    gradient:{0.2:"#3fb8c4",0.4:"#ffe27a",0.6:"#ffb44d",0.8:"#ff7f3f",1:"#ef4444"}});
+  if(document.getElementById("coTHeat").classList.contains("on")) coHeat.addTo(coMap);
+
+  // puntos clicables con popup de daño
+  coPoints.clearLayers();
+  const big=[...ev].sort((a,b)=>b.mag-a.mag).slice(0,900);
+  for(const e of big){
+    L.circleMarker([e.lat,e.lon],{radius:Math.max(2.5,(e.mag-3)*1.7),color:magColor(e.mag),
+      weight:1,fillColor:magColor(e.mag),fillOpacity:.55})
+     .bindPopup(damagePopup(e),{maxWidth:280}).addTo(coPoints);
+  }
+  if(document.getElementById("coTPoints").classList.contains("on")) coPoints.addTo(coMap);
+  else coMap.removeLayer(coPoints);
+
+  renderCoDepth(ev);
+  renderCoList(coAll);
+  setTimeout(()=>coMap.invalidateSize(),0);
+}
+
+function renderCoKpis(ev){
+  const n=ev.length;
+  const [,maxM]=n?extent(ev.map(e=>e.mag)):[0,0];
+  const deep=n?100*ev.filter(e=>e.depth>=70).length/n:0;
+  const last30=ev.filter(e=>e.time>=Date.now()-30*864e5).length;
+  const medD=n?median(ev.map(e=>e.depth)):0;
+  const k=[
+    {l:"Eventos · Colombia", v:n.toLocaleString("es"), u:""},
+    {l:"Magnitud máx", v:maxM.toFixed(1), u:"M", hot:true},
+    {l:"Prof. mediana", v:medD.toFixed(0), u:"km"},
+    {l:"Intermedios ≥70 km", v:deep.toFixed(0), u:"%"},
+    {l:"Últimos 30 días", v:last30, u:""},
+  ];
+  document.getElementById("coKpis").innerHTML=k.map(x=>
+    `<div class="kpi ${x.hot?'hot':''}"><div class="k-label">${x.l}</div>
+     <div class="k-val">${x.v}<span class="k-unit">${x.u}</span></div></div>`).join("");
+}
+
+function renderCoHighlight(coAll){
+  const el=document.getElementById("coHighlight");
+  const recent=coAll.filter(e=>e.time>=Date.now()-30*864e5);
+  const pool=recent.length?recent:coAll;
+  if(!pool.length){ el.style.display="none"; return; }
+  let big=pool[0]; for(const e of pool) if(e.mag>big.mag) big=e;
+  const info=mmiInfo(estimatedMMI(big.mag,big.depth));
+  const days=Math.max(0,Math.round((Date.now()-big.time)/864e5));
+  const ago=days===0?"hoy":days===1?"ayer":`hace ${days} d`;
+  el.style.display="flex";
+  el.innerHTML=
+    `<div class="hl-main">
+       <div class="hl-m" style="color:${magColor(big.mag)}">M ${big.mag.toFixed(1)}</div>
+       <div class="hl-meta">${big.place||''} · ${big.depth.toFixed(0)} km · ${new Date(big.time).toISOString().slice(0,10)} (${ago})</div>
+       <div class="hl-meta" style="color:var(--faint)">Mayor sismo en Colombia · ${recent.length?'últimos 30 días':'catálogo'} · fuente USGS</div>
+     </div>
+     <div class="hl-mmi">
+       <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">Potencial estimado</div>
+       <span class="mmi-badge" style="background:${info.color}">MMI ${info.roman}</span>
+       <div class="hl-meta" style="margin-top:6px">${info.label}<br>Energía ≈ ${energyString(big.mag)}</div>
+     </div>`;
+}
+
+function renderCoDepth(ev){
+  const d=ev.map(e=>e.depth);
+  if(!d.length){ Plotly.purge("coDepth"); return; }
+  Plotly.react("coDepth",[{
+    x:d, type:"histogram", xbins:{start:0,size:15},
+    marker:{color:"#7209b7",line:{color:"#0c1017",width:.5}},
+  }], layout({bargap:.03, margin:{l:44,r:10,t:8,b:34},
+     xaxis:{title:{text:"Profundidad (km)",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT},
+     yaxis:{title:{text:"Eventos",font:FONT},gridcolor:"#1b2331",linecolor:"#2e3a4e",tickfont:FONT}}), CONFIG);
+}
+
+function renderCoList(coAll){
+  const rows=[...coAll].sort((a,b)=>b.mag-a.mag).slice(0,8);
+  document.getElementById("coRows").innerHTML=rows.map(e=>{
+    const info=mmiInfo(estimatedMMI(e.mag,e.depth));
+    return `<tr>
+      <td>${new Date(e.time).toISOString().slice(0,10)}</td>
+      <td style="color:${magColor(e.mag)};font-weight:700">${e.mag.toFixed(1)}</td>
+      <td>${e.depth.toFixed(0)} km</td>
+      <td style="color:var(--text);white-space:normal">${(e.place||'').slice(0,32)}</td>
+      <td><span class="mmi-badge" style="background:${info.color};font-size:11px;padding:2px 7px">${info.roman}</span></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="5" style="color:var(--faint)">Sin sismos en el rango.</td></tr>`;
+}
+
+/* ============================================================= *
+ *  RESPUESTA Y AYUDA · ubicación por IP + canales oficiales
+ * ============================================================= */
+// agencias oficiales de protección civil por país (Sudamérica)
+const SA_COUNTRIES = {
+  CO:{name:"Colombia",  redcross:"Cruz Roja Colombiana",  civil:"UNGRD"},
+  PE:{name:"Perú",      redcross:"Cruz Roja Peruana",     civil:"INDECI"},
+  CL:{name:"Chile",     redcross:"Cruz Roja Chilena",     civil:"SENAPRED"},
+  EC:{name:"Ecuador",   redcross:"Cruz Roja Ecuatoriana", civil:"SNGRE"},
+  VE:{name:"Venezuela", redcross:"Cruz Roja Venezolana",  civil:"Protección Civil"},
+  BO:{name:"Bolivia",   redcross:"Cruz Roja Boliviana",   civil:"VIDECI"},
+  AR:{name:"Argentina", redcross:"Cruz Roja Argentina",   civil:"Defensa Civil"},
+  BR:{name:"Brasil",    redcross:"Cruz Vermelha Brasileira", civil:"Defesa Civil"},
+  PY:{name:"Paraguay",  redcross:"Cruz Roja Paraguaya",   civil:"SEN"},
+  UY:{name:"Uruguay",   redcross:"Cruz Roja Uruguaya",    civil:"SINAE"},
+  GY:{name:"Guyana",    redcross:"Guyana Red Cross",      civil:"CDC Guyana"},
+  SR:{name:"Surinam",   redcross:"Suriname Red Cross",    civil:"NCCR"},
+};
+const gsearch=q=>"https://www.google.com/search?q="+encodeURIComponent(q);
+const gnews  =q=>"https://news.google.com/search?q="+encodeURIComponent(q);
+
+async function geolocateIP(){
+  const providers=[
+    {u:"https://ipapi.co/json/", map:d=>({city:d.city,region:d.region,country:d.country_name,cc:d.country_code,lat:+d.latitude,lon:+d.longitude})},
+    {u:"https://ipwho.is/",      map:d=>d.success===false?null:({city:d.city,region:d.region,country:d.country,cc:d.country_code,lat:+d.latitude,lon:+d.longitude})},
+  ];
+  for(const p of providers){
+    try{
+      const r=await fetch(p.u); if(!r.ok) continue;
+      const g=p.map(await r.json());
+      if(g && isFinite(g.lat) && g.cc){ state.geo=g; return g; }
+    }catch(e){/* siguiente proveedor */}
+  }
+  return null;
+}
+
+function buildAidLinks(cc){
+  const c=SA_COUNTRIES[cc] || {name:(state.geo&&state.geo.country)||"tu país",redcross:"Cruz Roja",civil:null};
+  const links=[];
+  if(cc==="CO"){
+    links.push({label:"UNGRD — Unidad de Gestión del Riesgo", url:"https://www.gestiondelriesgo.gov.co/", cls:"gov"});
+    links.push({label:"Servicio Geológico Colombiano (SGC)",  url:"https://www.sgc.gov.co/",             cls:"gov"});
+  }
+  links.push({label:`${c.redcross} — donaciones oficiales`, url:gsearch(`${c.redcross} donaciones oficial`), cls:""});
+  if(c.civil) links.push({label:`${c.civil} — protección civil`, url:gsearch(`${c.civil} ${c.name} emergencia oficial`), cls:""});
+  links.push({label:"Puntos de acopio activos ahora", url:gnews(`puntos de acopio donaciones damnificados ${c.name}`), cls:"live"});
+  links.push({label:"Últimas noticias del evento", url:gnews(`sismo terremoto ${c.name} hoy`), cls:"live"});
+  links.push({label:"ReliefWeb — respuesta internacional", url:"https://reliefweb.int/updates?search="+encodeURIComponent(c.name+" earthquake"), cls:"gov"});
+  return {country:c, links};
+}
+
+function populateAidCountry(){
+  const sel=document.getElementById("aidCountry");
+  sel.innerHTML=Object.entries(SA_COUNTRIES).map(([cc,c])=>`<option value="${cc}">${c.name}</option>`).join("");
+  const cc=(state.geo&&SA_COUNTRIES[state.geo.cc])?state.geo.cc:"CO";
+  sel.value=cc;
+}
+
+function renderAidChannels(){
+  const cc=document.getElementById("aidCountry").value;
+  const {country,links}=buildAidLinks(cc);
+  document.getElementById("aidChannelsSub").textContent=`Canales oficiales · ${country.name}`;
+  document.getElementById("aidChannels").innerHTML=links.map(l=>
+    `<a class="aid-link ${l.cls}" href="${l.url}" target="_blank" rel="noopener">
+       <span class="ico"></span>${l.label}<span class="arrow">↗</span></a>`).join("");
+}
+
+function renderAidEvents(){
+  const g=state.geo, cutoff=Date.now()-30*864e5;
+  let evs=state.raw.filter(e=>e.time>=cutoff && e.mag>=5.0);
+  if(evs.length<3) evs=state.raw.filter(e=>e.time>=cutoff && e.mag>=4.5);
+  if(!evs.length)  evs=[...state.raw].sort((a,b)=>b.time-a.time).slice(0,8);
+  evs=evs.map(e=>({...e, dist: g&&isFinite(g.lat)? haversine(g.lat,g.lon,e.lat,e.lon):null}));
+  evs.sort((a,b)=>b.time-a.time);
+  const rows=evs.slice(0,12);
+  document.getElementById("aidEvents").innerHTML=rows.map(e=>{
+    const info=mmiInfo(estimatedMMI(e.mag,e.depth));
+    const min=Math.round((Date.now()-e.time)/60000);
+    const ago=min<60?`${min} min`:min<1440?`${Math.round(min/60)} h`:`${Math.round(min/1440)} d`;
+    const dist=e.dist==null?"—":e.dist<1000?`${Math.round(e.dist)} km`:`${(e.dist/1000).toFixed(1)} mil km`;
+    return `<tr>
+      <td>${ago}</td>
+      <td style="color:${magColor(e.mag)};font-weight:700">${e.mag.toFixed(1)}</td>
+      <td style="color:var(--text);white-space:normal">${(e.place||'').slice(0,30)}</td>
+      <td><span class="mmi-badge" style="background:${info.color};font-size:11px;padding:2px 7px">${info.roman}</span></td>
+      <td>${dist}</td></tr>`;
+  }).join("") || `<tr><td colspan="5" style="color:var(--faint)">Sin sismos recientes.</td></tr>`;
+}
+
+function updateAidGeo(){
+  const g=state.geo, el=document.getElementById("aidGeo");
+  if(!el) return;
+  if(g) el.innerHTML=`Ubicación aprox.: <b style="color:var(--text)">${[g.city,g.region,g.country].filter(Boolean).join(", ")}</b> <span style="color:var(--faint)">(por IP)</span>`;
+  else  el.textContent="Ubicación por IP no disponible — elige tu país manualmente.";
+}
+
+function renderAid(){
+  updateAidGeo();
+  renderAidEvents();
+  renderAidChannels();
+}
+
+/* ============================================================= *
+ *  Placas tectónicas (carga diferida)
+ * ============================================================= */
+async function togglePlates(on){
+  if(on && !platesLoaded){
+    try{
+      const r = await fetch(PLATES_URL); const gj = await r.json();
+      platesLayer = L.geoJSON(gj,{style:{color:"#ff7f3f",weight:1.2,opacity:.55,dashArray:"4 3"}});
+      platesLoaded = true;
+    }catch(e){ document.getElementById("tPlates").classList.remove("on"); return; }
+  }
+  if(!platesLayer) return;
+  if(on) platesLayer.addTo(map); else map.removeLayer(platesLayer);
+}
+
+/* ============================================================= *
+ *  Overlay / errores
+ * ============================================================= */
+function showOverlay(){const o=document.getElementById("overlay");
+  o.classList.remove("hidden");document.getElementById("ovl-err").style.display="none";
+  document.getElementById("spin").style.display="block";
+  document.getElementById("ovl-msg").style.display="block";
+  document.querySelector(".progress").style.display="block";}
+function setOverlay(msg,frac){document.getElementById("ovl-msg").textContent=msg;
+  document.getElementById("ovl-bar").style.width=(frac*100).toFixed(0)+"%";}
+function hideOverlay(){document.getElementById("overlay").classList.add("hidden");}
+function showError(err){
+  document.getElementById("spin").style.display="none";
+  document.getElementById("ovl-msg").style.display="none";
+  document.querySelector(".progress").style.display="none";
+  const box=document.getElementById("ovl-err"); box.style.display="block";
+  box.innerHTML = `<b>No se pudo contactar la API del USGS.</b><br>
+    Puede ser tu conexión o un bloqueo de red (CORS). Revisa el rango de años o
+    <a id="loadFileLink" href="#">carga un archivo local</a> (GeoJSON o CSV del USGS,
+    o el <code>.csv</code> que genera el script de Python).<br>
+    <span style="color:var(--faint)">Detalle: ${err.message||err}</span>`;
+  document.getElementById("loadFileLink").onclick=(ev)=>{ev.preventDefault();
+    document.getElementById("fileInput").click();};
+}
+
+/* carga desde archivo (fallback) */
+document.getElementById("fileInput").addEventListener("change",async(ev)=>{
+  const f=ev.target.files[0]; if(!f) return;
+  const txt=await f.text();
+  try{
+    let evs;
+    if(f.name.endsWith(".csv")){ evs=parseCSV(txt); }
+    else { const gj=JSON.parse(txt); evs=gj.features.map(ft=>({
+      id:ft.id,time:ft.properties.time,mag:ft.properties.mag,
+      depth:ft.geometry.coordinates[2],lon:ft.geometry.coordinates[0],
+      lat:ft.geometry.coordinates[1],place:ft.properties.place||""}));}
+    state.raw=evs.filter(e=>e.mag!=null&&e.depth!=null);
+    stopLive();                               // datos de archivo: sin tiempo real
+    state.byId=new Map(); for(const e of state.raw) state.byId.set(e.id,e);
+    hideOverlay(); applyView(); updateTicker();
+  }catch(e){ alert("Archivo no reconocido: "+e.message); }
+});
+function parseCSV(txt){
+  const lines=txt.trim().split(/\r?\n/); const h=lines[0].split(",");
+  const idx=n=>h.indexOf(n);
+  const it=idx("time"),ila=idx("latitude"),ilo=idx("longitude"),
+        idp=idx("depth"),im=idx("mag"),ipl=idx("place");
+  return lines.slice(1).map(l=>{const c=l.split(",");return{
+    id:l, time:Date.parse(c[it]), lat:+c[ila], lon:+c[ilo],
+    depth:+c[idp], mag:+c[im], place:ipl>=0?c[ipl]:""};});
+}
+
+/* exportar vista */
+function exportCSV(){
+  const rows=[["time","latitude","longitude","depth","mag","place"]];
+  for(const e of state.view) rows.push([new Date(e.time).toISOString(),
+    e.lat,e.lon,e.depth,e.mag,`"${(e.place||"").replace(/"/g,"'")}"`]);
+  const blob=new Blob([rows.map(r=>r.join(",")).join("\n")],{type:"text/csv"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download="sismos_vista.csv"; a.click();
+}
+
+/* ============================================================= *
+ *  Eventos UI
+ * ============================================================= */
+function bindUI(){
+  document.getElementById("reload").onclick=loadData;
+  document.getElementById("reset").onclick=()=>{
+    document.getElementById("vMag").value=+document.getElementById("fMinMag").value;
+    document.getElementById("vDepth").value=700;
+    document.getElementById("vMagLbl").textContent=(+document.getElementById("vMag").value).toFixed(1);
+    document.getElementById("vDepthLbl").textContent="700 km";
+    state.minMagView=+document.getElementById("vMag").value; state.depthMaxView=700;
+    applyView();
+  };
+  document.getElementById("download").onclick=exportCSV;
+  const vMag=document.getElementById("vMag");
+  vMag.oninput=()=>{state.minMagView=+vMag.value;
+    document.getElementById("vMagLbl").textContent=(+vMag.value).toFixed(1); applyView();};
+  const vDepth=document.getElementById("vDepth");
+  vDepth.oninput=()=>{state.depthMaxView=+vDepth.value;
+    document.getElementById("vDepthLbl").textContent=vDepth.value+" km"; applyView();};
+
+  for(const [id,layerFn] of [["tHeat",null],["tPoints",null],["tPlates",null],["tForecast",null]]){
+    document.getElementById(id).onclick=function(){
+      this.classList.toggle("on"); const on=this.classList.contains("on");
+      if(id==="tHeat"){ on?heatLayer.addTo(map):map.removeLayer(heatLayer); }
+      if(id==="tPoints"){ on?pointsLayer.addTo(map):map.removeLayer(pointsLayer); }
+      if(id==="tPlates"){ togglePlates(on); }
+      if(id==="tForecast"){ on?fcLayer.addTo(map):map.removeLayer(fcLayer); }
+    };
+  }
+
+  // controles del pronóstico
+  const recompute=()=>{ buildForecast(); renderForecastPanel(); renderReturnPeriod(); renderForecastMap(); };
+  const fcM0=document.getElementById("fcM0");
+  fcM0.oninput=()=>{ forecast.params.M0=+fcM0.value;
+    document.getElementById("fcM0Lbl").textContent=(+fcM0.value).toFixed(1); recompute(); };
+  const fcT=document.getElementById("fcT");
+  fcT.onchange=()=>{ forecast.params.T=+fcT.value; recompute(); };
+  const fcRes=document.getElementById("fcRes");
+  fcRes.onchange=()=>{ forecast.params.res=+fcRes.value; recompute(); };
+  const fcSig=document.getElementById("fcSig");
+  fcSig.oninput=()=>{ forecast.params.sigma=+fcSig.value;
+    document.getElementById("fcSigLbl").textContent=fcSig.value+" km"; recompute(); };
+
+  // controles ETAS / Omori
+  document.getElementById("etMain").onchange=renderETAS;
+  document.getElementById("etHorizon").onchange=function(){ etas.horizon=+this.value; renderETAS(); };
+  const etA=document.getElementById("etAlpha");
+  etA.oninput=()=>{ etas.alpha=+etA.value;
+    document.getElementById("etAlphaLbl").textContent=(+etA.value).toFixed(1); renderETAS(); };
+
+  // interruptor tiempo real
+  document.getElementById("liveToggle").onclick=()=>{
+    if(state.live){ stopLive(); }
+    else{ startLive(); pollUpdates(); }
+  };
+
+  // controles sección Colombia
+  const coMag=document.getElementById("coMag");
+  coMag.oninput=()=>{ document.getElementById("coMagLbl").textContent=(+coMag.value).toFixed(1); renderColombia(); };
+  for(const id of ["coTHeat","coTPoints","coTNest"]){
+    document.getElementById(id).onclick=function(){
+      this.classList.toggle("on"); const on=this.classList.contains("on");
+      if(id==="coTHeat" && coHeat){ on?coHeat.addTo(coMap):coMap.removeLayer(coHeat); }
+      if(id==="coTPoints" && coPoints){ on?coPoints.addTo(coMap):coMap.removeLayer(coPoints); }
+      if(id==="coTNest" && coNest){ on?coNest.addTo(coMap):coMap.removeLayer(coNest); }
+    };
+  }
+
+  // sección respuesta y ayuda
+  populateAidCountry();
+  document.getElementById("aidCountry").onchange=renderAidChannels;
+}
+
+/* traza sismográfica decorativa del header */
+function drawTrace(){
+  const w=1200,h=160; let d=`M0 ${h/2}`;
+  for(let x=0;x<=w;x+=6){
+    const spike = Math.random()<0.06 ? (Math.random()-0.5)*90 : (Math.random()-0.5)*14;
+    d+=` L${x} ${(h/2+spike).toFixed(1)}`;
+  }
+  document.getElementById("tracePath").setAttribute("d",d);
+}
+
+/* ============================================================= *
+ *  Arranque
+ * ============================================================= */
+window.addEventListener("load",()=>{
+  drawTrace(); initMap(); bindUI(); loadData();
+});
+</script>
+</body>
+</html>
