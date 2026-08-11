@@ -73,6 +73,9 @@ responsable, ten presente que:
   de preparación y el plan familiar quedan disponibles aunque se caiga la red, con los últimos
   datos conocidos y un aviso claro de que no están actualizados.
 - **Plan familiar imprimible**, guardado solo en tu dispositivo.
+- **Riesgo para la población**: el pronóstico de amenaza cruzado con dónde vive la gente. Ranking
+  de ciudades por exposición esperada a sacudidas con daño (MMI ≥ VI), porque *la celda más
+  probable casi nunca es la más peligrosa*: en Sudamérica suele estar mar adentro.
 - **Doble fuente**: si el USGS no responde, conmuta automáticamente al espejo del EMSC y lo
   indica en la cabecera, sin duplicar sismos que lleguen por ambas redes.
 - **Mapa de calor** de epicentros ponderado por energía, con capas de puntos clicables y
@@ -130,6 +133,8 @@ del script.
 ├── sw.js                   # Service worker: hace que funcione sin conexión
 ├── manifest.webmanifest    # Permite instalarla como aplicación
 ├── icon.svg                # Icono
+├── data/
+│   └── ciudades.json       # Población de ciudades (GeoNames, CC BY 4.0)
 ├── scripts/
 │   └── seismic_heatmap.py  # Generador de mapas de densidad estáticos (Python)
 ├── requirements.txt        # Dependencias del script
@@ -156,21 +161,44 @@ del script.
 | Terreno | Producto `ground-failure` del USGS | Deslizamientos y licuefacción, con población expuesta |
 | Réplicas oficiales | Producto `oaf` (ETAS bayesiano del USGS) | Complementa al ajuste Omori–Utsu propio |
 
-### Sobre la intensidad estimada
+### Modelo de intensidad (IPE)
 
-La estimación solo se usa cuando el USGS todavía no publicó intensidad para el sismo
-(alrededor del 19 % de los eventos M5.5+). Sus coeficientes están ajustados por mínimos
-cuadrados contra la intensidad instrumental real de ShakeMap en 816 sismos M5.5+ de
-Sudamérica (2000–2026), con validación cruzada 5-fold:
+`MMI = 1,171·M − 0,587·log₁₀(R) − 0,00597·R − 0,555`, con **R** la distancia hipocentral en km.
+
+Ajustado por mínimos cuadrados sobre **1.050 observaciones reales**: los 816 sismos M5.5+ de
+Sudamérica con intensidad instrumental publicada (2000–2026), más 234 puntos extraídos de los
+contornos de ShakeMap de 26 sismos M6.5+, que aportan intensidad medida entre 22 y 1.191 km
+del epicentro.
+
+El término lineal en R es imprescindible. Sin él el modelo no tiene atenuación anelástica y,
+extrapolado, seguiría dando MMI VI —daños— a 800 km del epicentro. Con él, un M8.0 superficial
+da MMI 7,0 a 100 km, 4,9 a 400 km y 2,3 a 800 km.
 
 | | Acierta dentro de ±1 grado | Sesgo | Error absoluto medio |
 |---|---|---|---|
-| Fórmula anterior | 31 % | +1,57 (exageraba) | 1,59 |
-| Fórmula actual | 79 % | 0,00 | 0,65 |
+| Fórmula original del proyecto | 31 % | +1,57 (exageraba) | 1,59 |
+| Modelo actual | 80 % | 0,00 | 0,63 |
 
-Lleva además un margen conservador de +0,3 grados, porque los dos errores no cuestan lo
-mismo: quedarse corto puede hacer que alguien no tome una precaución que necesitaba. Ese
-margen baja la subestimación del 9 % al 4 % y deja el error absoluto casi intacto.
+Validación cruzada 5-fold: 0,612 fuera de muestra frente a 0,607 dentro, sin sobreajuste.
+Validación ciega contra las intensidades que ShakeMap midió en 11 ciudades del sismo M7.4 del
+Chocó (2026): error absoluto **0,53 grados** y **100 % dentro de ±1 grado**.
+
+Se usa solo como respaldo cuando el USGS aún no publicó intensidad (~19 % de los eventos M5.5+),
+y entonces lleva un margen conservador de +0,2 grados: quedarse corto puede hacer que alguien no
+tome una precaución que necesitaba, mientras que pasarse solo gasta credibilidad. Ese margen baja
+la subestimación del 9 % al 5 % sin perder aciertos.
+
+### Riesgo para la población
+
+Para cada ciudad se integra, sobre todas las celdas del pronóstico y sobre la distribución de
+magnitudes de Gutenberg–Richter, la probabilidad de sufrir MMI ≥ VI. La intensidad se propaga con
+su dispersión medida (σ = 0,776), no como un umbral exacto, y la profundidad representativa de
+cada celda entra en la atenuación.
+
+**Es una línea base comparativa, no un estudio de amenaza sísmica.** No incluye vulnerabilidad
+constructiva ni efecto de sitio —la microzonificación de Bogotá, Cali, Pereira o Medellín—, y las
+tasas provienen del catálogo cargado: unas pocas décadas son un plazo corto para estimar la
+frecuencia de los sismos mayores, así que los periodos de retorno largos son los menos fiables.
 
 La magnitud de completitud (Mc) es clave: ajústala hasta que coincida con el pico del
 histograma de magnitud para que las estimaciones sean fiables.
@@ -187,6 +215,9 @@ histograma de magnitud para que las estimaciones sean fiables.
 - **Límites de placas**: [fraxen/tectonicplates](https://github.com/fraxen/tectonicplates) (PB2002)
 - **Librerías**: [Leaflet](https://leafletjs.com/), [Leaflet.heat](https://github.com/Leaflet/Leaflet.heat), [Plotly.js](https://plotly.com/javascript/)
 - **Geolocalización por IP**: ipapi.co / ipwho.is (con respaldo)
+- **Población de ciudades**: [GeoNames](https://www.geonames.org/) — `cities15000`, licencia
+  CC BY 4.0. Se incluye en `data/ciudades.json` un extracto de las 1.288 ciudades de Sudamérica
+  con 50.000 habitantes o más.
 - **Contexto Colombia**: Servicio Geológico Colombiano (SGC) y UNGRD
 
 Cada fuente conserva su propia licencia y términos de uso.

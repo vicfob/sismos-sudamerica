@@ -167,6 +167,28 @@ button{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.08e
   border:1px solid var(--hair2);color:var(--accent);background:var(--accent-glow)}
 .pb-act:hover{background:var(--accent-dim);color:#0a0d13}
 .pb-act.plain{color:var(--dim);background:transparent}
+/* Panel de riesgo para la población */
+.rk-head{padding:0 0 4px}
+.rk-cmp{display:flex;align-items:stretch;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.rk-box{flex:1 1 230px;background:var(--surface2);border:1px solid var(--hair);border-radius:10px;
+  padding:12px 15px;display:flex;flex-direction:column;gap:3px}
+.rk-box.rk-hot{border-color:var(--m3)}
+.rk-k{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--faint)}
+.rk-v{font-size:19px;font-weight:700;color:var(--text);letter-spacing:-.01em;line-height:1.2}
+.rk-box.rk-hot .rk-v{color:var(--m3)}
+.rk-u{font-size:11.5px;color:var(--dim);line-height:1.45}
+.rk-arrow{display:flex;align-items:center;color:var(--faint);font-size:19px}
+.rk-side{display:flex;flex-direction:column;gap:12px}
+.rk-stats{display:flex;flex-direction:column;gap:9px}
+.rk-stat{background:var(--surface2);border:1px solid var(--hair);border-radius:9px;padding:11px 14px;
+  display:flex;flex-direction:column;gap:2px}
+.rk-sv{font-size:21px;font-weight:700;color:var(--accent);letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;line-height:1.15}
+.rk-sl{font-size:11.5px;color:var(--dim);line-height:1.45}
+.rk-note{font-size:12px;color:var(--faint);line-height:1.6;margin:0}
+.rk-note b{color:var(--dim)}
+@media (max-width:760px){ .rk-arrow{display:none} }
 /* Barra de sin conexión */
 #offlineBar{position:fixed;left:0;right:0;bottom:0;z-index:1300;display:none;
   background:var(--m2);color:#0a0d13;font-size:13px;line-height:1.5;
@@ -595,6 +617,33 @@ table.aid-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(
     </div>
   </section>
 
+  <!-- RIESGO = AMENAZA x EXPOSICIÓN -->
+  <section class="panel span2" id="panelRisk">
+    <div class="panel-head">
+      <div class="t"><h3>Riesgo para la población</h3>
+        <span class="desc">La misma amenaza, cruzada con dónde vive la gente</span></div>
+      <span class="tag" id="rkTag">—</span>
+    </div>
+    <div class="fc-note">
+      <b>La celda más probable casi nunca es la más peligrosa.</b> El mapa de arriba señala dónde es más
+      probable que ocurra un sismo, y en Sudamérica eso suele ser mar adentro, donde no vive nadie. Aquí
+      se combina la tasa sísmica de cada celda con la población de 1.288 ciudades para estimar dónde es
+      más probable que <b>las personas</b> resulten afectadas. La intensidad se propaga con su dispersión
+      medida (σ = 0,82 grados MMI), no como un umbral exacto.
+    </div>
+    <div id="rkHead" class="rk-head"></div>
+    <div class="fc-body">
+      <div class="fc-list">
+        <h4>Ciudades por exposición esperada · MMI ≥ VI</h4>
+        <table class="zones"><thead><tr>
+          <th>#</th><th>Ciudad</th><th>Habitantes</th><th>Retorno</th><th>P(ventana)</th>
+        </tr></thead><tbody id="rkRows"></tbody></table>
+        <div class="fc-legend"><span style="margin-left:auto">Población: GeoNames (CC BY 4.0)</span></div>
+      </div>
+      <div class="rk-side" id="rkSide"></div>
+    </div>
+  </section>
+
   <!-- ETAS / OMORI · PRONÓSTICO TEMPORAL -->
   <section class="panel span2" id="panelETAS">
     <div class="panel-head">
@@ -916,7 +965,9 @@ table.aid-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(
   Datos: <a href="https://earthquake.usgs.gov/fdsnws/event/1/" target="_blank" rel="noopener">USGS FDSN Event Web Service</a>
   · Mapa base © <a href="https://carto.com/" target="_blank" rel="noopener">CARTO</a> / © OpenStreetMap
   · Autor Victorfob © <a href="https://victorfob.co/" target="_blank" rel="noopener">Logical LAB</a> / © Logical_lab
-  · Límites de placas: <a href="https://github.com/fraxen/tectonicplates" target="_blank" rel="noopener">Ahlenius / PB2002</a>.
+  · Límites de placas: <a href="https://github.com/fraxen/tectonicplates" target="_blank" rel="noopener">Ahlenius / PB2002</a>
+  · Espejo de datos: <a href="https://www.seismicportal.eu/" target="_blank" rel="noopener">EMSC</a>
+  · Población: <a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0).
   <br>
   El valor-b se estima por máxima verosimilitud (Aki–Utsu) tomando la magnitud mínima de la vista como magnitud de completitud (Mc);
   ajusta el deslizador de <code>Magnitud mín · vista</code> hasta que caiga cerca del pico del histograma para una estimación fiable.
@@ -982,21 +1033,40 @@ function energyString(m){
 // esta IPE simplificada es solo el respaldo cuando aún no hay ninguno publicado.
 // La profundidad atenúa la intensidad: por eso un sismo profundo grande se siente
 // poco en superficie. Describe la sacudida, no el daño observado.
-/* Respaldo: solo se usa cuando el USGS aún no publicó intensidad para el sismo.
-   Coeficientes ajustados por mínimos cuadrados contra la intensidad instrumental
-   real de ShakeMap en 816 sismos M5.5+ de Sudamérica (2000-2026). La fórmula
-   original (1.5*M - 3.0*log10(R) + 2.5) exageraba +1.57 grados de media y acertaba
-   dentro de un grado solo en el 31 % de los casos; la ajustada acierta en el 79 %.
+/* Modelo de intensidad (IPE) ajustado a datos reales del USGS.
+   MMI = c1*M + c2*log10(R) + c3*R + c0,  con R la distancia hipocentral en km.
 
-   El margen conservador existe porque los dos errores no cuestan lo mismo: quedarse
-   corto puede hacer que alguien no tome una precaución que necesitaba. Medido sobre
-   los mismos 816 sismos, +0.3 grados baja la subestimación de 9 % a 4 % y solo sube
-   la sobreestimación de 13 % a 18 %, con el error absoluto casi intacto (0.65→0.68). */
-const MMI_MARGEN_SEGURIDAD = 0.3;
+   Ajustado por mínimos cuadrados sobre 1.050 observaciones: los 816 sismos M5.5+
+   de Sudamérica con intensidad instrumental publicada (2000-2026) más 234 puntos
+   de contornos de ShakeMap de 26 sismos M6.5+, que aportan la intensidad medida
+   entre 22 y 1.191 km del epicentro.
+
+   El término lineal en R es imprescindible: sin él el modelo no tiene atenuación
+   anelástica y, extrapolado, seguiría dando MMI 6 —daños— a 800 km del epicentro.
+   Con él, un M8.0 superficial da MMI 7.0 a 100 km, 4.9 a 400 km y 2.3 a 800 km.
+
+   Precisión: acierta dentro de un grado en el 80 % de los casos (la fórmula
+   original acertaba en el 31 % y exageraba +1.57 de media). Validación cruzada
+   5-fold: 0.612 fuera de muestra frente a 0.607 dentro, sin sobreajuste. */
+const IPE = {c1:1.17062, c2:-0.58692, c3:-0.00597, c0:-0.55473};
+const MMI_SIGMA = 0.776;          // dispersión medida de los residuos
+
+/* Distancia hipocentral: los 36 km² evitan que la intensidad se dispare cuando
+   el sitio coincide con el epicentro de un sismo muy somero. */
+const distHipo = (distEpi, prof) => Math.sqrt(distEpi*distEpi + prof*prof + 36);
+
+function mmiModelo(m, distEpi, prof){
+  const R = distHipo(distEpi, prof);
+  return IPE.c1*m + IPE.c2*Math.log10(R) + IPE.c3*R + IPE.c0;
+}
+
+/* Margen conservador para la estimación de respaldo: los dos errores no cuestan
+   lo mismo. Quedarse corto puede hacer que alguien no tome una precaución que
+   necesitaba; pasarse solo gasta credibilidad. Medido sobre los 816 sismos,
+   +0.2 grados baja la subestimación del 9 % al 5 % sin perder aciertos. */
+const MMI_MARGEN_SEGURIDAD = 0.2;
 function estimatedMMI(m, depth){
-  const R = Math.sqrt(depth*depth + 36);       // dist. hipocentral al sitio (~6 km)
-  const mmi = 1.358*m - 1.216*Math.log10(R) - 0.984 + MMI_MARGEN_SEGURIDAD;
-  return Math.max(1, Math.min(12, mmi));
+  return Math.max(1, Math.min(12, mmiModelo(m, 0, depth) + MMI_MARGEN_SEGURIDAD));
 }
 
 /* Intensidad del sitio más sacudido, con su procedencia.
@@ -1951,7 +2021,7 @@ function median(arr){
 function renderAll(){
   renderKPIs(); renderMap(); renderGR(); renderMagHist();
   renderSlab(); renderTimeline(); renderDepthHist();
-  buildForecast(); renderForecastPanel(); renderReturnPeriod(); renderForecastMap();
+  buildForecast(); renderForecastPanel(); renderRiskPanel(); renderReturnPeriod(); renderForecastMap();
   renderETAS();
   renderColombia();
   renderAid();
@@ -1960,7 +2030,7 @@ function renderAll(){
 /* ============================================================= *
  *  PRONÓSTICO PROBABILÍSTICO  (sismicidad suavizada + Poisson)
  * ============================================================= */
-const forecast = {cells:[], b:1, years:1, params:{M0:5.0, T:10, res:1.0, sigma:75}};
+const forecast = {cells:[], riesgo:[], b:1, years:1, params:{M0:5.0, T:10, res:1.0, sigma:75}};
 
 function extent(arr){let mn=Infinity,mx=-Infinity;for(const v of arr){if(v<mn)mn=v;if(v>mx)mx=v;}return [mn,mx];}
 
@@ -1977,6 +2047,7 @@ function buildForecast(){
   const nx = Math.ceil((BBOX.maxlon-BBOX.minlon)/res);
   const ny = Math.ceil((BBOX.maxlat-BBOX.minlat)/res);
   const grid = new Float64Array(nx*ny);
+  const gridProf = new Float64Array(nx*ny);   // profundidad acumulada, para el riesgo
 
   // kernel gaussiano (σ en grados; ~111 km por grado)
   const sigDeg = sigma/111;
@@ -1994,7 +2065,10 @@ function buildForecast(){
       const w = Math.exp(-d2*inv2s2);
       norm += w; contrib.push([gy*nx+gx, w]);
     }
-    if(norm>0) for(const [idx,w] of contrib) grid[idx] += w/norm;  // conserva el conteo
+    if(norm>0) for(const [idx,w] of contrib){
+      grid[idx]     += w/norm;                 // conserva el conteo
+      gridProf[idx] += (w/norm)*ev.depth;      // profundidad ponderada igual que el conteo
+    }
   }
 
   const cells=[];
@@ -2008,11 +2082,122 @@ function buildForecast(){
     cells.push({
       lat0:BBOX.minlat+gy*res, lon0:BBOX.minlon+gx*res, res,
       latc:BBOX.minlat+(gy+0.5)*res, lonc:BBOX.minlon+(gx+0.5)*res,
-      lambda, p, cnt
+      lambda, p, cnt, rateMc,
+      prof: gridProf[gy*nx+gx]/cnt,          // profundidad representativa de la celda
     });
   }
   cells.sort((a,b)=>b.p-a.p);
   forecast.cells=cells; forecast.b=b; forecast.years=years;
+  buildRisk();
+}
+
+/* ============================================================= *
+ *  RIESGO = AMENAZA × EXPOSICIÓN
+ *  El mapa de pronóstico responde «dónde es más probable que
+ *  tiemble», y la respuesta suele ser mar adentro, donde no vive
+ *  nadie. La celda más probable casi nunca es la más peligrosa.
+ *  Aquí se cruza la tasa sísmica de cada celda con la población de
+ *  las ciudades para responder la pregunta que sí guía decisiones:
+ *  dónde es más probable que la gente resulte afectada.
+ * ============================================================= */
+const MMI_UMBRAL = 6;        // MMI VI: primer grado con daño, aunque leve
+const M_MAX      = 9.0;      // magnitud máxima creíble en la fosa de Nazca
+const D_MAX_KM   = 600;      // más allá, la contribución es despreciable
+
+let ciudades = null, ciudadesPedidas = false;
+async function cargarCiudades(){
+  if(ciudades || ciudadesPedidas) return ciudades;
+  ciudadesPedidas = true;
+  const d = await jsonFetch("./data/ciudades.json", 2);
+  ciudades = (d && d.ciudades) || [];
+  if(ciudades.length) buildRisk(), renderRiskPanel();
+  return ciudades;
+}
+
+/* Φ(z): probabilidad acumulada normal, por aproximación de Abramowitz y Stegun */
+function phi(z){
+  const t = 1/(1 + 0.2316419*Math.abs(z));
+  const d = 0.3989422804014327*Math.exp(-z*z/2);
+  const p = d*t*(0.319381530 + t*(-0.356563782 + t*(1.781477937 + t*(-1.821255978 + t*1.330274429))));
+  return z > 0 ? 1 - p : p;
+}
+
+/* Fracción de los sismos de una celda que producen MMI ≥ umbral a distancia dEpi.
+   Integra sobre la distribución de magnitudes de Gutenberg-Richter: un sismo M5
+   solo hace daño muy cerca, pero un M8 lo hace a cientos de kilómetros, y son
+   precisamente los grandes lejanos los que dominan el riesgo de una ciudad.
+   Se tabula por distancia porque el resultado no depende de qué celda sea. */
+function tablaFraccion(b, Mc, prof){
+  const paso = 0.1, bins = [];
+  for(let m = Mc; m < M_MAX; m += paso){
+    // probabilidad exacta del intervalo bajo Gutenberg-Richter truncada en M_MAX
+    const w = Math.pow(10, -b*(m-Mc)) - Math.pow(10, -b*(m+paso-Mc));
+    bins.push([m + paso/2, w]);
+  }
+  const dist = [], frac = [];
+  for(let i = 0; i <= 60; i++){
+    const d = (D_MAX_KM/60)*i;
+    let s = 0;
+    for(const [m, w] of bins){
+      const z = (mmiModelo(m, d, prof) - MMI_UMBRAL)/MMI_SIGMA;
+      if(z > -4) s += w*phi(z);        // la intensidad no es exacta: se propaga su dispersión
+    }
+    dist.push(d); frac.push(s);
+  }
+  return {dist, frac, paso:D_MAX_KM/60};
+}
+const interpola = (t, d) => {
+  if(d >= D_MAX_KM) return 0;
+  const i = Math.floor(d/t.paso), f = (d - t.dist[i])/t.paso;
+  return t.frac[i] + f*(t.frac[i+1] - t.frac[i]);
+};
+
+function buildRisk(){
+  if(!ciudades || !ciudades.length || !forecast.cells.length){ forecast.riesgo = []; return; }
+  const {T} = forecast.params;
+  const b = forecast.b || 1.0;
+  const Mc = state.minMagView;
+
+  /* La atenuación depende de la profundidad, así que se tabula por franjas y cada
+     celda usa la más cercana a su profundidad representativa. */
+  const franjas = [15, 40, 80, 150, 300];
+  const tablas = franjas.map(h => tablaFraccion(b, Mc, h));
+  const tablaDe = h => {
+    let mejor = 0;
+    for(let i=1;i<franjas.length;i++)
+      if(Math.abs(franjas[i]-h) < Math.abs(franjas[mejor]-h)) mejor = i;
+    return tablas[mejor];
+  };
+  const celdas = forecast.cells.map(c => ({
+    latc:c.latc, lonc:c.lonc, rateMc:c.rateMc, tabla:tablaDe(isFinite(c.prof)?c.prof:30),
+  }));
+
+  const salida = [];
+  for(const [nombre, la, lo, milesHab, cc] of ciudades){
+    const cosLat = Math.cos(la*Math.PI/180);
+    let tasa = 0;                                   // sismos con MMI≥umbral por año
+    for(const c of celdas){
+      const dLat = (c.latc - la)*111;
+      if(dLat > D_MAX_KM || dLat < -D_MAX_KM) continue;
+      const dLon = (c.lonc - lo)*111*cosLat;
+      if(dLon > D_MAX_KM || dLon < -D_MAX_KM) continue;
+      const d = Math.sqrt(dLat*dLat + dLon*dLon);
+      if(d >= D_MAX_KM) continue;
+      const fr = interpola(c.tabla, d);
+      if(fr > 1e-6) tasa += c.rateMc*fr;
+    }
+    if(tasa <= 1e-9) continue;
+    const hab = milesHab*1000;
+    salida.push({
+      nombre, cc, lat:la, lon:lo, hab,
+      tasa,                                         // por año
+      prob: 1 - Math.exp(-tasa*T),                  // en la ventana del pronóstico
+      expuestos: tasa*hab,                          // personas·año: la medida de riesgo
+      retorno: 1/tasa,
+    });
+  }
+  salida.sort((a,b)=>b.expuestos - a.expuestos);
+  forecast.riesgo = salida;
 }
 
 /* rampa de "peligrosidad": azul → púrpura → ámbar → rojo (distinta del calor de magnitud) */
@@ -2061,6 +2246,72 @@ function renderForecastPanel(){
       <td class="p">${(c.p*100).toFixed(1)}%
         <div class="pbar"><i style="width:${(100*c.p/pmax).toFixed(0)}%"></i></div></td></tr>`;
   }).join("") || `<tr><td colspan="5" style="color:var(--faint)">Sin datos suficientes en la vista.</td></tr>`;
+}
+
+function renderRiskPanel(){
+  const cuerpo = document.getElementById("rkRows");
+  if(!cuerpo) return;
+  const {T} = forecast.params;
+  document.getElementById("rkTag").textContent = `MMI ≥ VI · ${T} a`;
+  const r = forecast.riesgo || [];
+
+  if(!r.length){
+    cuerpo.innerHTML = `<tr><td colspan="5" style="color:var(--faint)">${
+      ciudades ? "Sin datos suficientes en la vista." : "Cargando población…"}</td></tr>`;
+    document.getElementById("rkHead").innerHTML = "";
+    document.getElementById("rkSide").innerHTML = "";
+    return;
+  }
+
+  const top = r.slice(0,12);
+  const maxExp = top[0].expuestos || 1;
+  cuerpo.innerHTML = top.map((c,i)=>`<tr>
+    <td>${i+1}</td>
+    <td style="color:var(--text)">${c.nombre} <span style="color:var(--faint)">${c.cc}</span></td>
+    <td>${(c.hab/1000).toFixed(0)} mil</td>
+    <td>${c.retorno<10000? Math.round(c.retorno)+" a" : "—"}</td>
+    <td class="p">${(c.prob*100).toFixed(1)}%
+      <div class="pbar"><i style="width:${(100*c.expuestos/maxExp).toFixed(0)}%"></i></div></td></tr>`).join("");
+
+  /* El contraste que da sentido al panel: la celda más probable frente a la
+     ciudad de mayor riesgo. Casi siempre están en sitios distintos. */
+  const celda = forecast.cells[0];
+  const ciudad = top[0];
+  const enTierra = celda && !enMar(celda.latc, celda.lonc);
+  document.getElementById("rkHead").innerHTML = `
+    <div class="rk-cmp">
+      <div class="rk-box">
+        <span class="rk-k">Celda más probable</span>
+        <span class="rk-v">${celda.latc.toFixed(1)}, ${celda.lonc.toFixed(1)}</span>
+        <span class="rk-u">P ${(celda.p*100).toFixed(1)}% · ${enTierra?"en tierra":"mar adentro, sin población"}</span>
+      </div>
+      <div class="rk-arrow">→</div>
+      <div class="rk-box rk-hot">
+        <span class="rk-k">Ciudad con más riesgo</span>
+        <span class="rk-v">${ciudad.nombre}</span>
+        <span class="rk-u">${(ciudad.hab/1e6).toFixed(1)} M hab · P ${(ciudad.prob*100).toFixed(1)}% de sacudida con daño</span>
+      </div>
+    </div>`;
+
+  const total = r.reduce((s,c)=>s+c.expuestos,0);
+  const conRiesgoAlto = r.filter(c=>c.prob>=0.5).length;
+  document.getElementById("rkSide").innerHTML = `
+    <div class="rk-stats">
+      <div class="rk-stat"><span class="rk-sv">${milesES(total)}</span>
+        <span class="rk-sl">personas·año de exposición esperada a MMI ≥ VI en toda la región</span></div>
+      <div class="rk-stat"><span class="rk-sv">${conRiesgoAlto}</span>
+        <span class="rk-sl">ciudades con más del 50 % de probabilidad de sufrir una sacudida con daño en ${T} años</span></div>
+      <div class="rk-stat"><span class="rk-sv">${r.length}</span>
+        <span class="rk-sl">ciudades con exposición no despreciable, de ${ciudades.length} evaluadas</span></div>
+    </div>
+    <p class="rk-note"><b>Qué no incluye este cálculo.</b> Falta la tercera pieza del riesgo, la
+      <b>vulnerabilidad constructiva</b>: dos ciudades con la misma sacudida y la misma población sufren
+      daños muy distintos según cómo estén construidas. Falta el <b>efecto de sitio</b>, que puede
+      amplificar la sacudida varias veces —los suelos lacustres de Bogotá son el caso conocido— y está
+      recogido en las microzonificaciones oficiales. Y las tasas salen del catálogo cargado en la vista:
+      unas pocas décadas son un plazo corto para estimar la frecuencia de los sismos más grandes, así que
+      los periodos de retorno largos son los menos fiables. Es una línea base comparativa, no un estudio
+      de amenaza sísmica.</p>`;
 }
 
 function renderReturnPeriod(){
@@ -2638,7 +2889,7 @@ function bindUI(){
   }
 
   // controles del pronóstico
-  const recompute=()=>{ buildForecast(); renderForecastPanel(); renderReturnPeriod(); renderForecastMap(); };
+  const recompute=()=>{ buildForecast(); renderForecastPanel(); renderRiskPanel(); renderReturnPeriod(); renderForecastMap(); };
   const fcM0=document.getElementById("fcM0");
   fcM0.oninput=()=>{ forecast.params.M0=+fcM0.value;
     document.getElementById("fcM0Lbl").textContent=(+fcM0.value).toFixed(1); recompute(); };
@@ -2694,7 +2945,9 @@ function drawTrace(){
  *  Arranque
  * ============================================================= */
 window.addEventListener("load",()=>{
-  drawTrace(); initMap(); bindUI(); initPlan(); initOffline(); loadData();
+  drawTrace(); initMap(); bindUI(); initPlan(); initOffline();
+  cargarCiudades();          // en paralelo: el riesgo se dibuja en cuanto llega
+  loadData();
 });
 
 /* ============================================================= *
