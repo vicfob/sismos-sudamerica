@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Observatorio Sísmico">
+  <rect width="512" height="512" rx="96" fill="#090c12"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#1b2534" stroke-width="10"/>
+  <circle cx="256" cy="256" r="96"  fill="none" stroke="#1b2534" stroke-width="10"/>
+  <!-- traza de sismograma: ruido, arribo P, arribo S y coda que decae -->
+  <path d="M56 256 h74 l10 -9 l9 10 l10 -8 l12 9
+           l9 -46 l11 78 l10 -104 l11 132 l10 -86 l11 60 l10 -38 l11 26
+           l10 -18 l11 13 l10 -9 l11 7 l10 -5 l11 4 l10 -3 h96"
+        fill="none" stroke="#4fd1c5" stroke-width="11"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="256" cy="256" r="17" fill="#ff7f3f"/>
+</svg>

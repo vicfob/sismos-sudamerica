@@ -34,6 +34,11 @@ responsable, ten presente que:
 - **La alerta PAGER es del USGS, no de este proyecto.** Cuando aparece la banda de alerta
   naranja o roja, es el nivel oficial publicado por el USGS. Para decisiones de emergencia,
   consulta siempre al SGC y a la UNGRD.
+- **Esto no es alerta sísmica temprana ni un canal oficial de emergencia.** La alerta temprana
+  real gana segundos detectando la onda P con redes dedicadas; un navegador que consulta un
+  catálogo recibe el sismo minutos después, siempre tarde para la sacudida. El aviso de tsunami
+  que muestra la herramienta es un **recordatorio de la regla de autoevacuación**, no una alerta:
+  el aviso oficial lo dan DIMAR y el CCCP en Colombia, y el PTWC a nivel internacional.
 - **Los canales de ayuda son enlaces a fuentes oficiales**, no direcciones verificadas por
   este proyecto. Los puntos de acopio cambian a diario: **verifica siempre** con las
   entidades oficiales antes de donar o desplazarte, y usa solo canales oficiales para
@@ -58,6 +63,16 @@ responsable, ten presente que:
   concreta, y ciudades afectadas por población. Cada bloque se dibuja solo si su dato llegó.
 - **Huella real de la sacudida**: contornos de ShakeMap sobre el mapa, en vez de un radio
   estimado alrededor del epicentro.
+- **Sección «Prepárate»**: qué revisar en tu edificio, qué anclar, plan familiar y kit de 72 h,
+  qué hacer durante el sismo y en las horas siguientes, y desmentido de los mitos que circulan
+  tras cada emergencia. Es la parte que más muertes evita y **no necesita conexión ni API**.
+- **Aviso de tsunami** para sismos superficiales de M≥7 frente a la costa: recuerda la única
+  regla que llega a tiempo en un tsunami cercano —si el sismo dura más de un minuto, evacúa sin
+  esperar aviso— y enlaza a DIMAR y al PTWC.
+- **Funciona sin conexión** (PWA instalable): tras la primera visita, la aplicación, la sección
+  de preparación y el plan familiar quedan disponibles aunque se caiga la red, con los últimos
+  datos conocidos y un aviso claro de que no están actualizados.
+- **Plan familiar imprimible**, guardado solo en tu dispositivo.
 - **Doble fuente**: si el USGS no responde, conmuta automáticamente al espejo del EMSC y lo
   indica en la cabecera, sin duplicar sismos que lleguen por ambas redes.
 - **Mapa de calor** de epicentros ponderado por energía, con capas de puntos clicables y
@@ -112,6 +127,9 @@ del script.
 ```
 .
 ├── index.html              # Dashboard (aplicación completa, sin backend)
+├── sw.js                   # Service worker: hace que funcione sin conexión
+├── manifest.webmanifest    # Permite instalarla como aplicación
+├── icon.svg                # Icono
 ├── scripts/
 │   └── seismic_heatmap.py  # Generador de mapas de densidad estáticos (Python)
 ├── requirements.txt        # Dependencias del script
@@ -119,6 +137,9 @@ del script.
 ├── .gitignore
 └── README.md
 ```
+
+> El service worker solo se activa sobre `https://` (o `localhost`). Abriendo `index.html`
+> directamente desde el disco la aplicación funciona igual, pero sin caché sin conexión.
 
 ---
 
