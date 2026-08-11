@@ -73,9 +73,11 @@ responsable, ten presente que:
   de preparación y el plan familiar quedan disponibles aunque se caiga la red, con los últimos
   datos conocidos y un aviso claro de que no están actualizados.
 - **Plan familiar imprimible**, guardado solo en tu dispositivo.
-- **Riesgo para la población**: el pronóstico de amenaza cruzado con dónde vive la gente. Ranking
-  de ciudades por exposición esperada a sacudidas con daño (MMI ≥ VI), porque *la celda más
-  probable casi nunca es la más peligrosa*: en Sudamérica suele estar mar adentro.
+- **Riesgo para la población**: amenaza × exposición × vulnerabilidad. Ranking de ciudades que
+  combina el pronóstico con dónde vive la gente, el **efecto amplificador del suelo local** medido
+  a partir de sismos pasados y la **vulnerabilidad constructiva de cada país**. Dos conclusiones que
+  el mapa de amenaza por sí solo esconde: *la celda más probable casi nunca es la más peligrosa*
+  —en Sudamérica suele estar mar adentro— y *la ciudad que más tiembla no es la de mayor riesgo*.
 - **Doble fuente**: si el USGS no responde, conmuta automáticamente al espejo del EMSC y lo
   indica en la cabecera, sin duplicar sismos que lleguen por ambas redes.
 - **Mapa de calor** de epicentros ponderado por energía, con capas de puntos clicables y
@@ -134,7 +136,9 @@ del script.
 ├── manifest.webmanifest    # Permite instalarla como aplicación
 ├── icon.svg                # Icono
 ├── data/
-│   └── ciudades.json       # Población de ciudades (GeoNames, CC BY 4.0)
+│   ├── ciudades.json       # Población de ciudades (GeoNames, CC BY 4.0)
+│   ├── sitio.json          # Efecto amplificador del suelo por ciudad (derivado de ShakeMap)
+│   └── vulnerabilidad.json # Funciones de mortalidad por país (PAGER del USGS)
 ├── scripts/
 │   └── seismic_heatmap.py  # Generador de mapas de densidad estáticos (Python)
 ├── requirements.txt        # Dependencias del script
@@ -160,6 +164,8 @@ del script.
 | Población expuesta | PAGER `exposures.json` | Habitantes por grado de intensidad |
 | Terreno | Producto `ground-failure` del USGS | Deslizamientos y licuefacción, con población expuesta |
 | Réplicas oficiales | Producto `oaf` (ETAS bayesiano del USGS) | Complementa al ajuste Omori–Utsu propio |
+| Efecto de suelo | Descomposición evento/sitio de residuos de ShakeMap | Promedio por ciudad, no microzonificación |
+| Vulnerabilidad | Funciones de mortalidad por país del PAGER | Nacional: no separa construcción formal de informal |
 
 ### Modelo de intensidad (IPE)
 
@@ -190,15 +196,42 @@ la subestimación del 9 % al 5 % sin perder aciertos.
 
 ### Riesgo para la población
 
-Para cada ciudad se integra, sobre todas las celdas del pronóstico y sobre la distribución de
-magnitudes de Gutenberg–Richter, la probabilidad de sufrir MMI ≥ VI. La intensidad se propaga con
-su dispersión medida (σ = 0,776), no como un umbral exacto, y la profundidad representativa de
-cada celda entra en la atenuación.
+Riesgo = **amenaza × exposición × vulnerabilidad**. Para cada ciudad se integra, sobre todas las
+celdas del pronóstico y sobre la distribución de magnitudes de Gutenberg–Richter, la probabilidad
+de sufrir cada grado de intensidad, propagando la dispersión medida (σ = 0,776) en lugar de aplicar
+un umbral exacto. Las tres piezas:
 
-**Es una línea base comparativa, no un estudio de amenaza sísmica.** No incluye vulnerabilidad
-constructiva ni efecto de sitio —la microzonificación de Bogotá, Cali, Pereira o Medellín—, y las
-tasas provienen del catálogo cargado: unas pocas décadas son un plazo corto para estimar la
-frecuencia de los sismos mayores, así que los periodos de retorno largos son los menos fiables.
+| Pieza | Origen |
+|---|---|
+| **Amenaza** | Catálogo del USGS suavizado espacialmente, con la profundidad representativa de cada celda |
+| **Exposición** | Población de 1.288 ciudades (GeoNames) |
+| **Efecto de suelo** | Residuos de sitio derivados de comparar lo que ShakeMap midió en cada ciudad con lo que predice el modelo regional, en 130 sismos |
+| **Vulnerabilidad** | Funciones empíricas de mortalidad por país del sistema PAGER del USGS |
+
+El **efecto de suelo** se obtiene descomponiendo los residuos en término de evento y término de
+sitio —el método estándar en modelos de movimiento del suelo—, con contracción empírica de Bayes y
+solo para ciudades con 3 o más observaciones. Dispersión medida: evento 0,619, sitio 0,482, residuo
+0,202. Coquimbo y La Serena, sobre cuencas sedimentarias costeras, amplifican; Quito, en altura
+sobre terreno volcánico, amortigua.
+
+La **vulnerabilidad** son las tasas de fallecidos por habitante expuesto y grado de intensidad que
+publica PAGER para cada país, verificadas constantes en hasta 40 sismos distintos. Codifican
+diferencias reales de construcción: a igual intensidad, Ecuador resulta unas 10 veces más letal que
+Colombia, y Chile es el menos letal de la región.
+
+> **La conclusión que más importa:** la vulnerabilidad reordena el ranking por completo. Chile
+> tiembla mucho más que Venezuela o Ecuador y, a igual sacudida, muere mucha menos gente. La
+> diferencia no es geológica: es cómo y con qué normas se construye. Es la única de las tres piezas
+> que una sociedad puede cambiar.
+
+**Límites, que son grandes.** El término de suelo es un promedio de la ciudad entera, no una
+microzonificación: no distingue barrios, y dentro de una misma ciudad la diferencia entre suelo
+firme y blando puede superar a la que aquí se aplica. La vulnerabilidad es nacional, así que no
+separa construcción formal de informal, y las funciones del PAGER están calibradas con los sismos
+históricos disponibles —en varios países, muy pocos—, de modo que su incertidumbre es amplia. Las
+tasas sísmicas salen del catálogo cargado, y unas décadas son poco para estimar la frecuencia de
+los sismos mayores. **Las cifras de fallecidos son una media estadística a muy largo plazo para
+comparar ciudades entre sí, no una previsión ni una estimación de víctimas de un sismo concreto.**
 
 La magnitud de completitud (Mc) es clave: ajústala hasta que coincida con el pico del
 histograma de magnitud para que las estimaciones sean fiables.
@@ -218,6 +251,9 @@ histograma de magnitud para que las estimaciones sean fiables.
 - **Población de ciudades**: [GeoNames](https://www.geonames.org/) — `cities15000`, licencia
   CC BY 4.0. Se incluye en `data/ciudades.json` un extracto de las 1.288 ciudades de Sudamérica
   con 50.000 habitantes o más.
+- **Vulnerabilidad y efecto de suelo**: derivados de productos del USGS —funciones de mortalidad del
+  sistema [PAGER](https://earthquake.usgs.gov/data/pager/) e intensidades de ShakeMap en ciudades—
+  procesados para este proyecto. El método está descrito en la sección de metodología.
 - **Contexto Colombia**: Servicio Geológico Colombiano (SGC) y UNGRD
 
 Cada fuente conserva su propia licencia y términos de uso.

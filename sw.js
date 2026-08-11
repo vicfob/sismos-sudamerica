@@ -22,7 +22,7 @@ const TILE_CACHE = `sismos-tiles-${VERSION}`;
 const TILE_MAX   = 350;                       // teselas guardadas como máximo
 
 const APP_SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg",
-                   "./data/ciudades.json"];
+                   "./data/ciudades.json", "./data/sitio.json", "./data/vulnerabilidad.json"];
 
 const esDatos = u =>
   u.hostname.includes("earthquake.usgs.gov") || u.hostname.includes("seismicportal.eu");

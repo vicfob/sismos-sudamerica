@@ -188,6 +188,10 @@ button{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.08e
 .rk-sl{font-size:11.5px;color:var(--dim);line-height:1.45}
 .rk-note{font-size:12px;color:var(--faint);line-height:1.6;margin:0}
 .rk-note b{color:var(--dim)}
+.rk-site{font-family:'JetBrains Mono',monospace;font-size:9.5px;padding:1px 5px;border-radius:4px;
+  margin-left:6px;border:1px solid var(--hair2)}
+.rk-site.amp{color:var(--m3);border-color:var(--m3)}
+.rk-site.amo{color:var(--accent);border-color:var(--accent-dim)}
 @media (max-width:760px){ .rk-arrow{display:none} }
 /* Barra de sin conexión */
 #offlineBar{position:fixed;left:0;right:0;bottom:0;z-index:1300;display:none;
@@ -627,9 +631,15 @@ table.aid-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(
     <div class="fc-note">
       <b>La celda más probable casi nunca es la más peligrosa.</b> El mapa de arriba señala dónde es más
       probable que ocurra un sismo, y en Sudamérica eso suele ser mar adentro, donde no vive nadie. Aquí
-      se combina la tasa sísmica de cada celda con la población de 1.288 ciudades para estimar dónde es
-      más probable que <b>las personas</b> resulten afectadas. La intensidad se propaga con su dispersión
-      medida (σ = 0,82 grados MMI), no como un umbral exacto.
+      se combinan las tres piezas del riesgo: la <b>amenaza</b> (tasa sísmica de cada celda), la
+      <b>exposición</b> (población de 1.288 ciudades) y la <b>vulnerabilidad</b> (cuánto daño causa la
+      misma sacudida según cómo esté construida la ciudad), más el efecto del suelo local. La intensidad
+      se propaga con su dispersión medida, no como un umbral exacto.
+      <br><br>
+      <b>La conclusión que más importa:</b> la vulnerabilidad cambia el orden por completo. Chile tiembla
+      mucho más que Venezuela o Ecuador y, a igual sacudida, muere mucha menos gente. La diferencia no es
+      geológica: es <b>cómo y con qué normas se construye</b>. Es la única de las tres piezas que una
+      sociedad puede cambiar, y por eso es la que vale la pena mirar.
     </div>
     <div id="rkHead" class="rk-head"></div>
     <div class="fc-body">
@@ -2105,13 +2115,36 @@ const M_MAX      = 9.0;      // magnitud máxima creíble en la fosa de Nazca
 const D_MAX_KM   = 600;      // más allá, la contribución es despreciable
 
 let ciudades = null, ciudadesPedidas = false;
+let sitios = null;        // término de sitio por ciudad (amplificación local)
+let vulner = null;        // función de mortalidad por país
+
 async function cargarCiudades(){
-  if(ciudades || ciudadesPedidas) return ciudades;
+  if(ciudadesPedidas) return ciudades;
   ciudadesPedidas = true;
-  const d = await jsonFetch("./data/ciudades.json", 2);
-  ciudades = (d && d.ciudades) || [];
-  if(ciudades.length) buildRisk(), renderRiskPanel();
+  const [c, s, v] = await Promise.all([
+    jsonFetch("./data/ciudades.json", 2),
+    jsonFetch("./data/sitio.json", 2),
+    jsonFetch("./data/vulnerabilidad.json", 2),
+  ]);
+  ciudades = (c && c.ciudades) || [];
+  sitios   = (s && s.sitios)   || [];
+  vulner   = (v && v.paises)   || null;
+  if(ciudades.length){ buildRisk(); renderRiskPanel(); }
   return ciudades;
+}
+
+/* Término de sitio de una ciudad: cuánto amplifica o amortigua su suelo la
+   sacudida respecto a lo que predice el modelo regional. Se busca por cercanía
+   porque los nombres difieren entre catálogos. */
+function terminoSitio(lat, lon){
+  if(!sitios || !sitios.length) return 0;
+  let mejor = 0, dMin = 15;                       // hasta 15 km se considera la misma ciudad
+  for(const [, la, lo, v] of sitios){
+    const dLat = (la-lat)*111, dLon = (lo-lon)*111*Math.cos(lat*Math.PI/180);
+    const d = Math.sqrt(dLat*dLat + dLon*dLon);
+    if(d < dMin){ dMin = d; mejor = v; }
+  }
+  return mejor;
 }
 
 /* Φ(z): probabilidad acumulada normal, por aproximación de Abramowitz y Stegun */
@@ -2122,82 +2155,141 @@ function phi(z){
   return z > 0 ? 1 - p : p;
 }
 
-/* Fracción de los sismos de una celda que producen MMI ≥ umbral a distancia dEpi.
-   Integra sobre la distribución de magnitudes de Gutenberg-Richter: un sismo M5
-   solo hace daño muy cerca, pero un M8 lo hace a cientos de kilómetros, y son
-   precisamente los grandes lejanos los que dominan el riesgo de una ciudad.
-   Se tabula por distancia porque el resultado no depende de qué celda sea. */
-function tablaFraccion(b, Mc, prof){
+/* Para una celda a distancia d de una ciudad, dos cantidades por sismo:
+     · frac  = probabilidad de que la sacudida alcance MMI ≥ umbral
+     · letal = fracción esperada de la población que fallecería
+   Ambas integran sobre la distribución de magnitudes de Gutenberg-Richter,
+   porque un M5 solo hace daño muy cerca mientras que un M8 lo hace a cientos
+   de kilómetros, y son los grandes lejanos los que dominan el riesgo urbano.
+   Se tabulan por distancia, con una tabla por combinación de profundidad, país
+   y término de sitio, que son las tres cosas que cambian la atenuación. */
+const NPASOS = 60, BANDAS = [5,6,7,8,9,10];
+
+/* Parte cara del cálculo: para cada distancia, la probabilidad de que la sacudida
+   caiga en cada grado de intensidad. Depende de la profundidad y del suelo local,
+   pero NO del país, así que se calcula una vez y se reutiliza para todos. */
+function tablaBandas(b, Mc, prof, dSitio){
   const paso = 0.1, bins = [];
-  for(let m = Mc; m < M_MAX; m += paso){
-    // probabilidad exacta del intervalo bajo Gutenberg-Richter truncada en M_MAX
-    const w = Math.pow(10, -b*(m-Mc)) - Math.pow(10, -b*(m+paso-Mc));
-    bins.push([m + paso/2, w]);
-  }
-  const dist = [], frac = [];
-  for(let i = 0; i <= 60; i++){
-    const d = (D_MAX_KM/60)*i;
-    let s = 0;
+  for(let m = Mc; m < M_MAX; m += paso)
+    bins.push([m + paso/2, Math.pow(10,-b*(m-Mc)) - Math.pow(10,-b*(m+paso-Mc))]);
+
+  const dPaso = D_MAX_KM/NPASOS;
+  const frac = new Float64Array(NPASOS+1);
+  const bandas = BANDAS.map(()=>new Float64Array(NPASOS+1));
+  for(let i = 0; i <= NPASOS; i++){
+    const d = dPaso*i;
+    let sFrac = 0;
     for(const [m, w] of bins){
-      const z = (mmiModelo(m, d, prof) - MMI_UMBRAL)/MMI_SIGMA;
-      if(z > -4) s += w*phi(z);        // la intensidad no es exacta: se propaga su dispersión
+      const med = mmiModelo(m, d, prof) + dSitio;   // el suelo local desplaza la intensidad
+      sFrac += w*phi((med - MMI_UMBRAL)/MMI_SIGMA);
+      let sup = phi((med - BANDAS[0])/MMI_SIGMA);   // P(MMI ≥ banda actual)
+      for(let k = 0; k < BANDAS.length; k++){
+        const supSig = k+1 < BANDAS.length ? phi((med - BANDAS[k+1])/MMI_SIGMA) : 0;
+        const pBanda = sup - supSig;
+        if(pBanda > 1e-5) bandas[k][i] += w*pBanda;
+        sup = supSig;
+      }
     }
-    dist.push(d); frac.push(s);
+    frac[i] = sFrac;
   }
-  return {dist, frac, paso:D_MAX_KM/60};
+  return {frac, bandas, dPaso};
 }
-const interpola = (t, d) => {
+
+/* Parte barata: aplicar la función de mortalidad del país a esas bandas. */
+function tablaRiesgo(base, tasasPais){
+  const letal = new Float64Array(NPASOS+1);
+  if(tasasPais) for(let i = 0; i <= NPASOS; i++){
+    let s = 0;
+    for(let k = 0; k < BANDAS.length; k++) s += base.bandas[k][i]*tasasPais[BANDAS[k]-1];
+    letal[i] = s;
+  }
+  return {frac:base.frac, letal, dPaso:base.dPaso};
+}
+const interpola = (t, campo, d) => {
   if(d >= D_MAX_KM) return 0;
-  const i = Math.floor(d/t.paso), f = (d - t.dist[i])/t.paso;
-  return t.frac[i] + f*(t.frac[i+1] - t.frac[i]);
+  const i = Math.floor(d/t.dPaso), f = (d - i*t.dPaso)/t.dPaso;
+  const a = t[campo];
+  return a[i] + f*(a[i+1] - a[i]);
+};
+
+const FRANJAS_PROF = [15, 40, 80, 150, 300];
+const franjaDe = h => {
+  let mejor = 0;
+  for(let i=1;i<FRANJAS_PROF.length;i++)
+    if(Math.abs(FRANJAS_PROF[i]-h) < Math.abs(FRANJAS_PROF[mejor]-h)) mejor = i;
+  return mejor;
 };
 
 function buildRisk(){
   if(!ciudades || !ciudades.length || !forecast.cells.length){ forecast.riesgo = []; return; }
   const {T} = forecast.params;
-  const b = forecast.b || 1.0;
+  const b  = forecast.b || 1.0;
   const Mc = state.minMagView;
 
-  /* La atenuación depende de la profundidad, así que se tabula por franjas y cada
-     celda usa la más cercana a su profundidad representativa. */
-  const franjas = [15, 40, 80, 150, 300];
-  const tablas = franjas.map(h => tablaFraccion(b, Mc, h));
-  const tablaDe = h => {
-    let mejor = 0;
-    for(let i=1;i<franjas.length;i++)
-      if(Math.abs(franjas[i]-h) < Math.abs(franjas[mejor]-h)) mejor = i;
-    return tablas[mejor];
+  /* Dos cachés: la parte cara depende solo de profundidad y suelo; aplicar la
+     mortalidad del país encima es una multiplicación. Así, añadir países no
+     multiplica el coste. */
+  const cacheBase = new Map(), cacheFinal = new Map();
+  const tablaPara = (iProf, cc, dSitio) => {
+    const claveFinal = iProf+"|"+cc+"|"+dSitio;
+    let t = cacheFinal.get(claveFinal);
+    if(t) return t;
+    const claveBase = iProf+"|"+dSitio;
+    let base = cacheBase.get(claveBase);
+    if(!base){
+      base = tablaBandas(b, Mc, FRANJAS_PROF[iProf], dSitio);
+      cacheBase.set(claveBase, base);
+    }
+    t = tablaRiesgo(base, vulner && vulner[cc]);
+    cacheFinal.set(claveFinal, t);
+    return t;
   };
+
   const celdas = forecast.cells.map(c => ({
-    latc:c.latc, lonc:c.lonc, rateMc:c.rateMc, tabla:tablaDe(isFinite(c.prof)?c.prof:30),
+    latc:c.latc, lonc:c.lonc, rateMc:c.rateMc,
+    iProf: franjaDe(isFinite(c.prof) ? c.prof : 30),
   }));
 
   const salida = [];
   for(const [nombre, la, lo, milesHab, cc] of ciudades){
-    const cosLat = Math.cos(la*Math.PI/180);
-    let tasa = 0;                                   // sismos con MMI≥umbral por año
+    const cosLat  = Math.cos(la*Math.PI/180);
+    // el término de sitio se agrupa en pasos de 0.2: por debajo, la diferencia es
+    // menor que la incertidumbre del propio término y solo multiplica tablas
+    const dSitio  = Math.round(terminoSitio(la, lo)*5)/5;
+    const tablas  = [null,null,null,null,null];               // se construyen si hacen falta
+    let tasa = 0, muertes = 0;
+    const hab = milesHab*1000;
     for(const c of celdas){
       const dLat = (c.latc - la)*111;
       if(dLat > D_MAX_KM || dLat < -D_MAX_KM) continue;
       const dLon = (c.lonc - lo)*111*cosLat;
       if(dLon > D_MAX_KM || dLon < -D_MAX_KM) continue;
-      const d = Math.sqrt(dLat*dLat + dLon*dLon);
-      if(d >= D_MAX_KM) continue;
-      const fr = interpola(c.tabla, d);
-      if(fr > 1e-6) tasa += c.rateMc*fr;
+      const d2 = dLat*dLat + dLon*dLon;
+      if(d2 >= D_MAX_KM*D_MAX_KM) continue;
+      const d = Math.sqrt(d2);
+      const t = tablas[c.iProf] || (tablas[c.iProf] = tablaPara(c.iProf, cc, dSitio));
+      const fr = interpola(t, "frac", d);
+      if(fr > 1e-7){
+        tasa    += c.rateMc*fr;
+        muertes += c.rateMc*interpola(t, "letal", d)*hab;
+      }
     }
     if(tasa <= 1e-9) continue;
-    const hab = milesHab*1000;
     salida.push({
-      nombre, cc, lat:la, lon:lo, hab,
-      tasa,                                         // por año
+      nombre, cc, lat:la, lon:lo, hab, dSitio,
+      tasa,                                         // sismos con daño por año
       prob: 1 - Math.exp(-tasa*T),                  // en la ventana del pronóstico
-      expuestos: tasa*hab,                          // personas·año: la medida de riesgo
+      expuestos: tasa*hab,                          // personas·año expuestas
+      muertes,                                      // fallecidos esperados por año
       retorno: 1/tasa,
     });
   }
-  salida.sort((a,b)=>b.expuestos - a.expuestos);
+  /* El orden es por fallecidos esperados: es la medida que integra las tres piezas
+     del riesgo —amenaza, exposición y vulnerabilidad— y no solo las dos primeras. */
+  const criterio = vulner ? "muertes" : "expuestos";
+  salida.sort((a,b)=>b[criterio] - a[criterio]);
   forecast.riesgo = salida;
+  forecast.criterio = criterio;
 }
 
 /* rampa de "peligrosidad": azul → púrpura → ámbar → rojo (distinta del calor de magnitud) */
@@ -2264,19 +2356,27 @@ function renderRiskPanel(){
   }
 
   const top = r.slice(0,12);
-  const maxExp = top[0].expuestos || 1;
-  cuerpo.innerHTML = top.map((c,i)=>`<tr>
-    <td>${i+1}</td>
-    <td style="color:var(--text)">${c.nombre} <span style="color:var(--faint)">${c.cc}</span></td>
-    <td>${(c.hab/1000).toFixed(0)} mil</td>
-    <td>${c.retorno<10000? Math.round(c.retorno)+" a" : "—"}</td>
-    <td class="p">${(c.prob*100).toFixed(1)}%
-      <div class="pbar"><i style="width:${(100*c.expuestos/maxExp).toFixed(0)}%"></i></div></td></tr>`).join("");
+  const crit = forecast.criterio || "expuestos";
+  const maxV = top[0][crit] || 1;
+  cuerpo.innerHTML = top.map((c,i)=>{
+    const sitio = c.dSitio
+      ? `<span class="rk-site ${c.dSitio>0?"amp":"amo"}" title="Efecto del suelo local, medido a partir de sismos pasados">${
+          c.dSitio>0?"+":""}${c.dSitio.toFixed(1)}</span>` : "";
+    return `<tr>
+      <td>${i+1}</td>
+      <td style="color:var(--text)">${c.nombre} <span style="color:var(--faint)">${c.cc}</span>${sitio}</td>
+      <td>${(c.hab/1000).toFixed(0)} mil</td>
+      <td>${c.retorno<10000? Math.round(c.retorno)+" a" : "—"}</td>
+      <td class="p">${(c.prob*100).toFixed(1)}%
+        <div class="pbar"><i style="width:${(100*c[crit]/maxV).toFixed(0)}%"></i></div></td></tr>`;
+  }).join("");
 
   /* El contraste que da sentido al panel: la celda más probable frente a la
      ciudad de mayor riesgo. Casi siempre están en sitios distintos. */
   const celda = forecast.cells[0];
   const ciudad = top[0];
+  // la ciudad que más sacudidas recibe, que casi nunca es la de mayor riesgo
+  const masSacudida = r.reduce((a,c)=> (!a || c.tasa > a.tasa) ? c : a, null);
   const enTierra = celda && !enMar(celda.latc, celda.lonc);
   document.getElementById("rkHead").innerHTML = `
     <div class="rk-cmp">
@@ -2291,27 +2391,45 @@ function renderRiskPanel(){
         <span class="rk-v">${ciudad.nombre}</span>
         <span class="rk-u">${(ciudad.hab/1e6).toFixed(1)} M hab · P ${(ciudad.prob*100).toFixed(1)}% de sacudida con daño</span>
       </div>
-    </div>`;
+    </div>
+    ${masSacudida && masSacudida.nombre !== ciudad.nombre ? `<p class="rk-note" style="margin-top:2px">
+      La ciudad que <b>más va a temblar</b> no es la de mayor riesgo: es <b>${masSacudida.nombre}</b>
+      (${(masSacudida.prob*100).toFixed(0)} % frente al ${(ciudad.prob*100).toFixed(0)} % de
+      ${ciudad.nombre}). La diferencia la pone la vulnerabilidad constructiva.</p>` : ""}`;
 
   const total = r.reduce((s,c)=>s+c.expuestos,0);
   const conRiesgoAlto = r.filter(c=>c.prob>=0.5).length;
+  const muertesAnio = r.reduce((s,c)=>s+(c.muertes||0),0);
+  const conSitio = r.filter(c=>c.dSitio).length;
   document.getElementById("rkSide").innerHTML = `
     <div class="rk-stats">
+      ${vulner ? `<div class="rk-stat"><span class="rk-sv">${muertesAnio<10?muertesAnio.toFixed(1):milesES(muertesAnio)}</span>
+        <span class="rk-sl">fallecidos esperados por año en las ciudades evaluadas, aplicando la
+          vulnerabilidad de cada país. Es una media a largo plazo, no una previsión.</span></div>` : ""}
       <div class="rk-stat"><span class="rk-sv">${milesES(total)}</span>
         <span class="rk-sl">personas·año de exposición esperada a MMI ≥ VI en toda la región</span></div>
       <div class="rk-stat"><span class="rk-sv">${conRiesgoAlto}</span>
         <span class="rk-sl">ciudades con más del 50 % de probabilidad de sufrir una sacudida con daño en ${T} años</span></div>
       <div class="rk-stat"><span class="rk-sv">${r.length}</span>
-        <span class="rk-sl">ciudades con exposición no despreciable, de ${ciudades.length} evaluadas</span></div>
+        <span class="rk-sl">ciudades con exposición no despreciable, de ${ciudades.length} evaluadas${
+          conSitio?`; ${conSitio} con efecto de suelo medido`:""}</span></div>
     </div>
-    <p class="rk-note"><b>Qué no incluye este cálculo.</b> Falta la tercera pieza del riesgo, la
-      <b>vulnerabilidad constructiva</b>: dos ciudades con la misma sacudida y la misma población sufren
-      daños muy distintos según cómo estén construidas. Falta el <b>efecto de sitio</b>, que puede
-      amplificar la sacudida varias veces —los suelos lacustres de Bogotá son el caso conocido— y está
-      recogido en las microzonificaciones oficiales. Y las tasas salen del catálogo cargado en la vista:
-      unas pocas décadas son un plazo corto para estimar la frecuencia de los sismos más grandes, así que
-      los periodos de retorno largos son los menos fiables. Es una línea base comparativa, no un estudio
-      de amenaza sísmica.</p>`;
+    <p class="rk-note"><b>De dónde sale cada pieza.</b> La <b>amenaza</b>, del catálogo del USGS
+      suavizado espacialmente. La <b>exposición</b>, de la población de GeoNames. El <b>efecto de
+      suelo</b>, de comparar lo que ShakeMap midió realmente en cada ciudad con lo que predice el modelo
+      regional, en 130 sismos: la diferencia sistemática de una ciudad es su amplificación local. La
+      <b>vulnerabilidad</b>, de las funciones empíricas de mortalidad por país del sistema PAGER del
+      USGS, que codifican cuánta gente muere por cada grado de sacudida en cada país.</p>
+    <p class="rk-note"><b>Sus límites, que son grandes.</b> El término de suelo es una corrección
+      promedio de la ciudad entera, no una microzonificación: no distingue barrios, y dentro de una misma
+      ciudad la diferencia entre suelo firme y suelo blando puede superar a la que aquí se aplica. La
+      vulnerabilidad es <b>nacional</b>: no separa construcción formal de informal ni barrio de barrio,
+      y las funciones de mortalidad del PAGER están calibradas con los sismos históricos disponibles, que
+      en varios países son muy pocos, así que su incertidumbre es amplia. Las tasas sísmicas salen del
+      catálogo cargado, y unas décadas son un plazo corto para estimar la frecuencia de los sismos
+      mayores. <b>Las cifras de fallecidos son una media estadística a muy largo plazo para comparar
+      ciudades entre sí, no una previsión de lo que pasará ni una medida de cuántas personas morirían en
+      un sismo concreto.</b></p>`;
 }
 
 function renderReturnPeriod(){
