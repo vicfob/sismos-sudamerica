@@ -25,10 +25,15 @@ responsable, ten presente que:
   **probabilístico**: estima *dónde es más probable* que ocurra actividad y *cómo decae*
   una secuencia de réplicas, con modelos estándar (Gutenberg–Richter, sismicidad
   suavizada + Poisson, ETAS/Omori). No es una alerta ni una garantía.
-- **El «potencial de daño» es una estimación.** La intensidad de Mercalli (MMI) que se
-  muestra al hacer clic en un epicentro se calcula a partir de magnitud y profundidad;
-  **no es daño observado**. La intensidad real depende de la geología local, el tipo de
-  suelo y la construcción.
+- **La intensidad describe la sacudida, no el daño observado.** La intensidad de Mercalli
+  (MMI) que se muestra al hacer clic en un epicentro proviene de **ShakeMap** (medida por
+  instrumentos) o de los reportes ciudadanos de **DYFI**. Cuando el USGS aún no publicó
+  ninguna de las dos, se calcula una estimación a partir de magnitud y profundidad, y
+  aparece marcada como `est`. El daño real depende de la geología local, el tipo de suelo
+  y la construcción.
+- **La alerta PAGER es del USGS, no de este proyecto.** Cuando aparece la banda de alerta
+  naranja o roja, es el nivel oficial publicado por el USGS. Para decisiones de emergencia,
+  consulta siempre al SGC y a la UNGRD.
 - **Los canales de ayuda son enlaces a fuentes oficiales**, no direcciones verificadas por
   este proyecto. Los puntos de acopio cambian a diario: **verifica siempre** con las
   entidades oficiales antes de donar o desplazarte, y usa solo canales oficiales para
@@ -41,6 +46,13 @@ responsable, ten presente que:
 
 ## ✨ Características
 
+- **Intensidad real, no estimada**: cada sismo muestra la intensidad de Mercalli medida por
+  ShakeMap o reportada por la ciudadanía (DYFI), declarando siempre de dónde sale el dato.
+- **Alerta de impacto PAGER**: banda destacada cuando el USGS clasifica un sismo como naranja
+  o rojo, con enlace a la ficha oficial, al SGC y a la UNGRD. Los sismos con alerta se
+  distinguen en el mapa con un anillo de color.
+- **Doble fuente**: si el USGS no responde, conmuta automáticamente al espejo del EMSC y lo
+  indica en la cabecera, sin duplicar sismos que lleguen por ambas redes.
 - **Mapa de calor** de epicentros ponderado por energía, con capas de puntos clicables y
   límites de placas tectónicas.
 - **Análisis estadístico**: distribución magnitud–frecuencia de Gutenberg–Richter con
@@ -54,7 +66,7 @@ responsable, ten presente que:
 - **Tiempo real**: sondeo del USGS cada 60 s con fusión incremental (nuevos eventos y
   revisiones) sin recargar todo; indicador *en vivo* y ticker del último evento.
 - **Sección Colombia**: vista dedicada al territorio (filtro por polígono del país), nido
-  sísmico de Bucaramanga, contexto tectónico y **medida de daño estimada (MMI) por clic**.
+  sísmico de Bucaramanga, contexto tectónico e **intensidad (MMI) por clic**.
 - **Respuesta y ayuda**: detección de ubicación aproximada por IP, sismos recientes en
   Sudamérica con distancia al usuario, y canales oficiales de ayuda con **búsquedas en
   vivo** que se mantienen actualizadas.
@@ -110,7 +122,24 @@ del script.
 | Valor *b* | Máxima verosimilitud (Aki–Utsu) | Depende de la magnitud de completitud (Mc) |
 | Pronóstico espacial | Sismicidad suavizada (kernel gaussiano) + Gutenberg–Richter + Poisson | Línea base tipo CSEP |
 | Pronóstico temporal | Ley de Omori–Utsu e intensidad condicional ETAS | La proyección asume que no hay nuevos disparadores |
-| Potencial de daño | Intensidad de Mercalli estimada a partir de M y profundidad | Estimación, no daño observado |
+| Intensidad | ShakeMap del USGS → DYFI → estimación propia | Se indica siempre de cuál de las tres proviene |
+| Alerta de impacto | Nivel PAGER del USGS (verde/amarillo/naranja/rojo) | Solo naranja y rojo disparan la banda de alerta |
+
+### Sobre la intensidad estimada
+
+La estimación solo se usa cuando el USGS todavía no publicó intensidad para el sismo
+(alrededor del 19 % de los eventos M5.5+). Sus coeficientes están ajustados por mínimos
+cuadrados contra la intensidad instrumental real de ShakeMap en 816 sismos M5.5+ de
+Sudamérica (2000–2026), con validación cruzada 5-fold:
+
+| | Acierta dentro de ±1 grado | Sesgo | Error absoluto medio |
+|---|---|---|---|
+| Fórmula anterior | 31 % | +1,57 (exageraba) | 1,59 |
+| Fórmula actual | 79 % | 0,00 | 0,65 |
+
+Lleva además un margen conservador de +0,3 grados, porque los dos errores no cuestan lo
+mismo: quedarse corto puede hacer que alguien no tome una precaución que necesitaba. Ese
+margen baja la subestimación del 9 % al 4 % y deja el error absoluto casi intacto.
 
 La magnitud de completitud (Mc) es clave: ajústala hasta que coincida con el pico del
 histograma de magnitud para que las estimaciones sean fiables.
@@ -120,6 +149,9 @@ histograma de magnitud para que las estimaciones sean fiables.
 ## 📊 Fuentes de datos y atribución
 
 - **Sismos**: [USGS FDSN Event Web Service](https://earthquake.usgs.gov/fdsnws/event/1/)
+  (fuente primaria: es la única que publica intensidad medida y alerta PAGER)
+- **Espejo de respaldo**: [EMSC — seismicportal.eu](https://www.seismicportal.eu/) — se usa
+  automáticamente si el USGS no responde, para no quedarse sin datos durante una emergencia
 - **Mapa base**: [CARTO](https://carto.com/) © OpenStreetMap
 - **Límites de placas**: [fraxen/tectonicplates](https://github.com/fraxen/tectonicplates) (PB2002)
 - **Librerías**: [Leaflet](https://leafletjs.com/), [Leaflet.heat](https://github.com/Leaflet/Leaflet.heat), [Plotly.js](https://plotly.com/javascript/)

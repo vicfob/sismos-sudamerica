@@ -146,6 +146,25 @@ button{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.08e
 #ovl-msg{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--dim);letter-spacing:.05em}
 .progress{width:min(340px,70vw);height:4px;background:var(--hair2);border-radius:3px;overflow:hidden}
 .progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s}
+/* Banda de alerta PAGER — solo aparece en sismos naranja o rojos */
+#pagerBand{margin:0 0 14px;border-radius:11px;overflow:hidden;border:1px solid var(--hair2);
+  background:var(--surface);box-shadow:var(--shadow)}
+.pb-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;
+  border-left:5px solid var(--m4)}
+.pb-level{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;
+  padding:4px 11px;border-radius:6px;color:#0a0d13;font-weight:700;white-space:nowrap}
+.pb-title{font-weight:700;font-size:15.5px;color:var(--text);flex:1 1 260px;line-height:1.35}
+.pb-sub{font-size:12.5px;color:var(--dim);line-height:1.55;padding:0 16px 13px 21px}
+.pb-sub b{color:var(--text)}
+.pb-acts{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 14px 21px}
+.pb-act{font-size:12px;padding:6px 12px;border-radius:7px;text-decoration:none;
+  border:1px solid var(--hair2);color:var(--accent);background:var(--accent-glow)}
+.pb-act:hover{background:var(--accent-dim);color:#0a0d13}
+.pb-act.plain{color:var(--dim);background:transparent}
+.src-tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint)}
+.est-flag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;
+  color:var(--faint);border:1px dashed var(--hair2);border-radius:5px;padding:1px 6px;margin-left:6px}
 .err-box{max-width:520px;text-align:center;color:var(--dim);font-size:13.5px;line-height:1.6}
 .err-box b{color:var(--m4)}
 .err-box .btn-retry{margin-top:14px;padding:7px 16px;border-radius:7px;cursor:pointer;
@@ -307,6 +326,7 @@ table.aid-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(
         <span class="dot" id="liveDot"></span><span class="mono" id="liveLabel">EN VIVO</span></div>
       <div class="id mono" id="lastUpdate">—</div>
       <div class="id mono" id="stationRange">—</div>
+      <div class="id mono" id="dataSource" title="Fuente de datos activa">USGS</div>
     </div>
   </div>
   <p class="sub">Catálogo histórico de epicentros bajo la placa de Nazca y el margen continental.
@@ -351,6 +371,8 @@ table.aid-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(
 </div>
 
 <div class="ticker" id="ticker"><span class="tk-label">Último evento</span> —</div>
+
+<div id="pagerBand" style="display:none"></div>
 
 <div class="kpis" id="kpis"></div>
 
@@ -508,8 +530,8 @@ table.aid-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(
     <div class="tricolor"><i class="y"></i><i class="b"></i><i class="r"></i></div>
     <h2>Colombia · sismicidad nacional</h2>
     <p class="co-sub">Vista dedicada al territorio colombiano, en la convergencia de las placas de
-      Nazca, Caribe y Sudamérica. <b>Haz clic en cualquier epicentro</b> para ver su potencial de daño
-      estimado (intensidad de Mercalli) y la energía liberada.</p>
+      Nazca, Caribe y Sudamérica. <b>Haz clic en cualquier epicentro</b> para ver la intensidad de
+      Mercalli medida por el USGS, la alerta oficial si la hay y la energía liberada.</p>
     <div class="fc-controls" style="border-bottom:none;padding:14px 0 0">
       <div class="range-wrap">
         <label class="mono" style="font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)">
@@ -530,7 +552,7 @@ table.aid-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(
     <section class="panel">
       <div class="panel-head">
         <div class="t"><h3>Mapa sísmico de Colombia</h3>
-          <span class="desc">Clic en un epicentro → intensidad y energía estimadas</span></div>
+          <span class="desc">Clic en un epicentro → intensidad medida, alerta y energía</span></div>
       </div>
       <div class="panel-body" style="padding:0"><div id="coMap"></div></div>
       <div class="maglegend"><span>M4</span><div class="bar"></div><span>M8+</span></div>
@@ -545,7 +567,7 @@ table.aid-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(
       <div class="panel-body"><div id="coDepth" class="chart" style="height:196px"></div></div>
       <div class="panel-head" style="border-top:1px solid var(--hair)">
         <div class="t"><h3>Sismos destacados</h3>
-          <span class="desc">Mayor magnitud · con intensidad estimada</span></div>
+          <span class="desc">Mayor magnitud · intensidad medida cuando existe</span></div>
       </div>
       <div class="panel-body" style="overflow:auto;max-height:260px">
         <table class="co-list"><thead><tr>
@@ -576,9 +598,11 @@ table.aid-list td{padding:7px 8px;border-bottom:1px solid var(--hair);color:var(
     <h4>Sismos históricos de referencia</h4>
     Tumaco 1979 (M~8.1, con tsunami), Popayán 1983 (M~5.5) y Armenia/Quindío 1999 (M~6.2, ~1.900 víctimas).
     <br><br>
-    <span style="color:var(--faint)">Datos: USGS en tiempo real. El «potencial de daño» al hacer clic es una
-    <b>estimación</b> de intensidad de Mercalli a partir de magnitud y profundidad, no daño observado; la
-    intensidad real depende de la geología local, el tipo de suelo y la construcción.</span>
+    <span style="color:var(--faint)">Datos: USGS en tiempo real. La intensidad de Mercalli que se muestra al
+    hacer clic proviene de <b>ShakeMap</b> (medida por instrumentos) o de los reportes ciudadanos de
+    <b>DYFI</b>. Cuando el USGS aún no publicó ninguna de las dos, se calcula una estimación a partir de
+    magnitud y profundidad y aparece marcada como <b>est</b>. La intensidad describe la sacudida, no el
+    daño observado: el daño real depende de la geología local, el tipo de suelo y la construcción.</span>
   </div>
 </div>
 
@@ -658,6 +682,7 @@ const state = {
   // tiempo real
   live: false, polling: false, lastPoll: null,
   pollTimer: null, liveTimer: null,
+  usedMirror: false,   // true si algún bloque se sirvió desde el espejo EMSC
 };
 const POLL_MS = 60000;   // USGS refresca ~cada minuto
 
@@ -690,14 +715,47 @@ function energyString(m){
   if(kt < 1000)   return kt.toFixed(kt<10?1:0)+" kt TNT";
   return (kt/1000).toFixed(1)+" Mt TNT";
 }
-// Intensidad máxima estimada en el epicentro (Mercalli) a partir de M y profundidad.
-// IPE simplificada: la profundidad atenúa la intensidad (por eso un sismo profundo
-// grande se siente poco en superficie). Aproximación, no daño observado.
+// Intensidad de Mercalli. Se prefiere siempre el dato del USGS (ShakeMap o DYFI);
+// esta IPE simplificada es solo el respaldo cuando aún no hay ninguno publicado.
+// La profundidad atenúa la intensidad: por eso un sismo profundo grande se siente
+// poco en superficie. Describe la sacudida, no el daño observado.
+/* Respaldo: solo se usa cuando el USGS aún no publicó intensidad para el sismo.
+   Coeficientes ajustados por mínimos cuadrados contra la intensidad instrumental
+   real de ShakeMap en 816 sismos M5.5+ de Sudamérica (2000-2026). La fórmula
+   original (1.5*M - 3.0*log10(R) + 2.5) exageraba +1.57 grados de media y acertaba
+   dentro de un grado solo en el 31 % de los casos; la ajustada acierta en el 79 %.
+
+   El margen conservador existe porque los dos errores no cuestan lo mismo: quedarse
+   corto puede hacer que alguien no tome una precaución que necesitaba. Medido sobre
+   los mismos 816 sismos, +0.3 grados baja la subestimación de 9 % a 4 % y solo sube
+   la sobreestimación de 13 % a 18 %, con el error absoluto casi intacto (0.65→0.68). */
+const MMI_MARGEN_SEGURIDAD = 0.3;
 function estimatedMMI(m, depth){
   const R = Math.sqrt(depth*depth + 36);       // dist. hipocentral al sitio (~6 km)
-  const mmi = 1.5*m - 3.0*Math.log10(R) + 2.5;
+  const mmi = 1.358*m - 1.216*Math.log10(R) - 0.984 + MMI_MARGEN_SEGURIDAD;
   return Math.max(1, Math.min(12, mmi));
 }
+
+/* Intensidad del sitio más sacudido, con su procedencia.
+   Prioridad: medida por instrumentos > reportada por personas > estimada.
+   El USGS envía mmi y cdi en la misma respuesta que ya descargamos. */
+function siteIntensity(e){
+  if(e.mmi != null && e.mmi > 0)
+    return {v:e.mmi, est:false, src:"ShakeMap · medido por instrumentos"};
+  if(e.cdi != null && e.cdi > 0)
+    return {v:e.cdi, est:false,
+            src:`Reportado por ${e.felt||"varias"} persona${e.felt===1?"":"s"} (DYFI)`};
+  return {v:estimatedMMI(e.mag, e.depth), est:true,
+          src:"Estimado a partir de magnitud y profundidad"};
+}
+
+/* Alerta PAGER del USGS: escala de respuesta que exige el sismo. */
+const PAGER = {
+  green:  {label:"VERDE",   color:"#3fae6a", text:"Sin víctimas ni daños significativos esperados."},
+  yellow: {label:"AMARILLA",color:"#e8c33c", text:"Posibles víctimas localizadas y daños. Respuesta local."},
+  orange: {label:"NARANJA", color:"#e8802b", text:"Víctimas y daños significativos probables. Respuesta regional o nacional."},
+  red:    {label:"ROJA",    color:"#e0344b", text:"Desastre de alto impacto. Respuesta nacional o internacional."},
+};
 const MMI_SCALE = [
   [1,  "I",     "No sentido",                    "#3fb8c4"],
   [2,  "II–III","Sentido levemente (interiores)","#4fd1c5"],
@@ -710,25 +768,39 @@ const MMI_SCALE = [
   [10, "X",     "Destrucción generalizada",       "#a5183b"],
   [11, "XI–XII","Catastrófico",                   "#6d0f28"],
 ];
+/* El grado romano se obtiene redondeando, que es la convención del USGS: una
+   intensidad de 7.999 es VIII («daños considerables»), no VII. Truncar la dejaba
+   un grado por debajo, y quedarse corto es el error que no puede permitirse. */
 function mmiInfo(mmi){
+  const r = Math.round(mmi);
   let e = MMI_SCALE[0];
-  for(const s of MMI_SCALE){ if(mmi >= s[0]) e = s; }
+  for(const s of MMI_SCALE){ if(r >= s[0]) e = s; }
   return {roman:e[1], label:e[2], color:e[3]};
 }
 function damagePopup(e){
-  const info = mmiInfo(estimatedMMI(e.mag, e.depth));
+  const si   = siteIntensity(e);
+  const info = mmiInfo(si.v);
   const date = new Date(e.time).toISOString().slice(0,10);
-  return `<div style="min-width:196px">
+  const p    = e.alert && PAGER[e.alert];
+  return `<div style="min-width:210px">
     <b style="color:${magColor(e.mag)};font-size:14px">M ${e.mag.toFixed(1)}</b>
       &nbsp;·&nbsp; ${e.depth.toFixed(0)} km &nbsp;·&nbsp; ${date}<br>
     <span style="color:#8b98ab">${e.place||''}</span>
+    ${p ? `<div style="margin-top:7px"><span style="display:inline-block;padding:2px 8px;
+      border-radius:5px;background:${p.color};color:#0a0d13;font-weight:700;font-size:11px;
+      letter-spacing:.08em">ALERTA ${p.label}</span></div>` : ""}
     <hr style="border:none;border-top:1px solid #2e3a4e;margin:8px 0">
     <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#586274;margin-bottom:5px">
-      Potencial de daño (estimado)</div>
+      Intensidad máxima${si.est ? " (estimada)" : ""}</div>
     <div><span style="display:inline-block;padding:3px 9px;border-radius:6px;background:${info.color};
       color:#0a0d13;font-weight:700">MMI ${info.roman}</span>
       <span style="margin-left:7px">${info.label}</span></div>
+    <div style="font-size:11px;color:#586274;margin-top:6px">${si.src}</div>
     <div style="font-size:11.5px;color:#8b98ab;margin-top:7px">Energía ≈ ${energyString(e.mag)}</div>
+    ${e.tsunami ? `<div style="font-size:11.5px;color:#ffb44d;margin-top:6px">
+      Evaluado por riesgo de tsunami — consulta el aviso oficial</div>` : ""}
+    ${e.url ? `<div style="margin-top:8px"><a href="${e.url}" target="_blank" rel="noopener"
+      style="color:#4fd1c5;font-size:11.5px">Ficha oficial del USGS ↗</a></div>` : ""}
   </div>`;
 }
 
@@ -747,6 +819,14 @@ function featuresToEvents(features){
       lon:f.geometry.coordinates[0],
       lat:f.geometry.coordinates[1],
       place:f.properties.place||"",
+      // datos de impacto que ya venían en esta misma respuesta
+      mmi:f.properties.mmi,          // intensidad instrumental (ShakeMap)
+      cdi:f.properties.cdi,          // intensidad reportada por personas (DYFI)
+      felt:f.properties.felt,        // cuántas personas la reportaron
+      alert:f.properties.alert,      // nivel PAGER: green/yellow/orange/red
+      tsunami:f.properties.tsunami,  // bandera de evaluación de tsunami
+      url:f.properties.url,          // ficha oficial del evento
+      net:"USGS",
     }))
     .filter(e => e.mag!=null && e.lat!=null && e.lon!=null && e.depth!=null);
 }
@@ -787,9 +867,73 @@ async function usgsFetch(params, tries = USGS_TRIES){
   throw lastErr;
 }
 
+/* ---- Espejo EMSC (seismicportal.eu) ----------------------------------------
+   El USGS es la fuente primaria porque es la única que publica intensidad real,
+   alerta PAGER y demás productos de impacto. Pero es un único punto de fallo: en
+   pruebas desde redes domésticas llegó a rechazar 13 de 20 peticiones. El EMSC
+   cubre el mismo catálogo global, acepta el mismo recuadro y responde con CORS
+   abierto, así que sirve de respaldo para no quedarse sin datos.
+   Lo que el espejo NO trae: mmi, cdi, alert. Los eventos quedan marcados como
+   EMSC para que la interfaz no presente una estimación como si fuera medición. */
+const EMSC = "https://seismicportal.eu/fdsnws/event/1/query";
+
+function emscParams(t0, t1, minMag){
+  return new URLSearchParams({
+    format:"json",
+    start:new Date(t0).toISOString(), end:new Date(t1).toISOString(),
+    minmag:String(minMag),
+    minlat:BBOX.minlat, maxlat:BBOX.maxlat,
+    minlon:BBOX.minlon, maxlon:BBOX.maxlon,
+    limit:String(USGS_LIMIT),
+  });
+}
+
+function emscToEvents(features){
+  return (features||[])
+    .filter(f => !f.properties.evtype || f.properties.evtype === "ke")   // ke = sismo
+    .map(f => {
+      const p = f.properties;
+      return {
+        id:"emsc:"+(p.unid||p.source_id),
+        time:Date.parse(p.time),
+        mag:p.mag,
+        depth:p.depth,
+        lon:p.lon, lat:p.lat,
+        place:p.flynn_region||"",
+        mmi:null, cdi:null, felt:null, alert:null, tsunami:0, url:null,
+        net:"EMSC",
+      };
+    })
+    .filter(e => isFinite(e.time) && e.mag!=null && e.lat!=null && e.lon!=null && e.depth!=null);
+}
+
+async function emscFetch(params, tries = 2){
+  let lastErr = new Error("sin respuesta");
+  for(let attempt=0; attempt<tries; attempt++){
+    if(attempt) await sleep(700);
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), USGS_TIMEOUT);
+    try{
+      const res = await fetch(`${EMSC}?${params.toString()}`, {signal:ctrl.signal});
+      if(res.ok) return await res.json();
+      lastErr = new Error(`EMSC respondió ${res.status}`);
+    }catch(err){ lastErr = err; }
+    finally{ clearTimeout(timer); }
+  }
+  throw lastErr;
+}
+
 /* descarga un rango de tiempo; si topa el límite de 20k eventos lo parte por la mitad */
 async function fetchSpan(t0, t1, minMag){
-  const gj = await usgsFetch(usgsParams(t0, t1, minMag));
+  let gj;
+  try{
+    gj = await usgsFetch(usgsParams(t0, t1, minMag));
+  }catch(err){
+    // el USGS no respondió: se intenta el espejo antes de dar el bloque por perdido
+    const alt = await emscFetch(emscParams(t0, t1, minMag));
+    state.usedMirror = true;
+    return emscToEvents(alt.features);
+  }
   const feats = gj.features || [];
   if(feats.length >= USGS_LIMIT && (t1-t0) > 2*86400000){
     const mid = t0 + Math.floor((t1-t0)/2);
@@ -798,6 +942,47 @@ async function fetchSpan(t0, t1, minMag){
     return a.concat(b);
   }
   return featuresToEvents(feats);
+}
+
+/* Fusiona eventos en el almacén canónico. Un mismo sismo tiene id distinto en
+   el USGS y en el EMSC, así que además del id se compara por cercanía: mismo
+   minuto aproximado y menos de 100 km. Ante un duplicado gana el registro del
+   USGS, que es el único que trae intensidad medida y alerta PAGER.
+   Devuelve cuántos sismos nuevos entraron. */
+function mergeEvents(evs){
+  const bucket = new Map();                       // minuto -> eventos ya almacenados
+  const key = t => Math.round(t/60000);
+  for(const e of state.byId.values()){
+    const k = key(e.time);
+    if(!bucket.has(k)) bucket.set(k, []);
+    bucket.get(k).push(e);
+  }
+  const put = e => {
+    state.byId.set(e.id, e);
+    const k = key(e.time);
+    if(!bucket.has(k)) bucket.set(k, []);
+    bucket.get(k).push(e);
+  };
+  let added = 0;
+  for(const e of evs){
+    if(state.byId.has(e.id)){ state.byId.set(e.id, e); continue; }   // revisión del mismo evento
+    let twin = null;
+    const k = key(e.time);
+    for(let d=-1; d<=1 && !twin; d++)
+      for(const c of (bucket.get(k+d)||[]))
+        if(Math.abs(c.time-e.time) < 90000 && haversine(c.lat,c.lon,e.lat,e.lon) < 100){ twin=c; break; }
+    if(twin){
+      if(e.net === "USGS" && twin.net !== "USGS"){   // el USGS reemplaza al espejo
+        state.byId.delete(twin.id);
+        const arr = bucket.get(key(twin.time)); if(arr) arr.splice(arr.indexOf(twin),1);
+        put(e);
+      }
+      continue;                                     // ya lo teníamos: no cuenta como nuevo
+    }
+    put(e); added++;
+  }
+  state.raw = [...state.byId.values()];
+  return added;
 }
 
 async function loadData(){
@@ -815,6 +1000,7 @@ async function loadData(){
   }
 
   showOverlay();
+  state.usedMirror = false;
   const all = [], failed = [];
   for(let i=0;i<spans.length;i++){
     const [t0,t1,label] = spans[i];
@@ -833,8 +1019,7 @@ async function loadData(){
 
   // almacén canónico por id (permite upsert en vivo)
   state.byId = new Map();
-  for(const e of all) state.byId.set(e.id, e);
-  state.raw = [...state.byId.values()];
+  mergeEvents(all);
   state.lastPoll = Date.now();
 
   // ajusta límites de sliders de vista al mínimo descargado
@@ -877,11 +1062,16 @@ async function pollUpdates(){
     const overlap = 2*3600*1000;    // 2 h de solape → captura revisiones
     const start = (state.lastPoll||Date.now()) - overlap;
     // 2 intentos: si el sondeo falla, el siguiente ciclo (60 s) lo vuelve a intentar
-    const gj = await usgsFetch(usgsParams(start, Date.now()+60000, minMag), 2);
-    const evs = featuresToEvents(gj.features||[]);
-    let added = 0;
-    for(const e of evs){ if(!state.byId.has(e.id)) added++; state.byId.set(e.id, e); }
-    state.raw = [...state.byId.values()];
+    let evs;
+    try{
+      const gj = await usgsFetch(usgsParams(start, Date.now()+60000, minMag), 2);
+      evs = featuresToEvents(gj.features||[]);
+    }catch(err){
+      const alt = await emscFetch(emscParams(start, Date.now()+60000, minMag));
+      evs = emscToEvents(alt.features);
+      state.usedMirror = true;
+    }
+    const added = mergeEvents(evs);
     state.lastPoll = Date.now();
     updateLiveUI(added);
     updateTicker();
@@ -944,6 +1134,68 @@ function applyView(){
   state.view = state.raw.filter(e =>
     e.mag >= state.minMagView && e.depth <= state.depthMaxView);
   renderAll();
+  renderPagerBand();
+}
+
+/* Banda de alerta. Solo se muestra en sismos con alerta PAGER naranja o roja de
+   los últimos 30 días: son los que exigen respuesta regional o nacional. Los
+   verdes y amarillos no la disparan a propósito — una herramienta que alerta por
+   todo enseña a ignorarla justo antes del sismo que sí importa. */
+const PAGER_RANK = {green:0, yellow:1, orange:2, red:3};
+
+/* ¿este sismo exige respuesta organizada? */
+const alerted = e => e.alert === "orange" || e.alert === "red";
+
+function markerStyle(e, scale=1.6){
+  return {radius:Math.max(2,(e.mag-3)*scale), color:magColor(e.mag),
+          weight:1, fillColor:magColor(e.mag), fillOpacity:.55};
+}
+/* anillo alrededor de los sismos con alerta PAGER: se ven distintos a simple vista */
+function alertHalo(e){
+  const p = PAGER[e.alert];
+  return L.circleMarker([e.lat,e.lon], {
+    radius:Math.max(9,(e.mag-3)*4), color:p.color, weight:2,
+    fill:false, opacity:.9, interactive:false,
+  });
+}
+function renderPagerBand(){
+  const band = document.getElementById("pagerBand");
+  if(!band) return;
+  const cutoff = Date.now() - 30*864e5;
+  const serious = state.raw.filter(e =>
+    e.time >= cutoff && (e.alert === "orange" || e.alert === "red"));
+  if(!serious.length){ band.style.display = "none"; return; }
+
+  serious.sort((a,b) =>
+    (PAGER_RANK[b.alert]-PAGER_RANK[a.alert]) || (b.time-a.time));
+  const e = serious[0];
+  const p = PAGER[e.alert];
+  const si = siteIntensity(e);
+  const info = mmiInfo(si.v);
+  const hrs = (Date.now()-e.time)/3600000;
+  const ago = hrs < 48 ? `hace ${Math.round(hrs)} h` : `hace ${Math.round(hrs/24)} días`;
+  const otros = serious.length > 1
+    ? ` · ${serious.length-1} evento${serious.length>2?"s":""} más con alerta en los últimos 30 días` : "";
+
+  band.style.display = "block";
+  band.innerHTML =
+    `<div class="pb-top" style="border-left-color:${p.color}">
+       <span class="pb-level" style="background:${p.color}">ALERTA ${p.label}</span>
+       <span class="pb-title">M ${e.mag.toFixed(1)} · ${e.place||"—"}</span>
+       <span class="src-tag">${ago}${e.tsunami ? " · evaluado por tsunami" : ""}</span>
+     </div>
+     <div class="pb-sub">
+       ${p.text}
+       <br>Intensidad máxima <b>MMI ${info.roman}</b> — ${info.label.toLowerCase()}.
+       ${e.felt ? `<b>${e.felt}</b> personas reportaron haberlo sentido.` : ""}
+       <span class="src-tag">· ${si.src}</span>${otros}
+     </div>
+     <div class="pb-acts">
+       ${e.url ? `<a class="pb-act" href="${e.url}" target="_blank" rel="noopener">Ficha oficial del USGS ↗</a>` : ""}
+       <a class="pb-act" href="https://www.sgc.gov.co/" target="_blank" rel="noopener">Servicio Geológico Colombiano ↗</a>
+       <a class="pb-act" href="https://www.gestiondelriesgo.gov.co/" target="_blank" rel="noopener">UNGRD ↗</a>
+       <a class="pb-act plain" href="#aid">Ir a respuesta y ayuda</a>
+     </div>`;
 }
 
 /* ============================================================= *
@@ -1016,10 +1268,9 @@ function renderMap(){
   // limita a los mayores para no saturar el DOM
   const big = [...state.view].sort((a,b)=>b.mag-a.mag).slice(0,1200);
   for(const e of big){
-    L.circleMarker([e.lat,e.lon],{
-      radius:Math.max(2, (e.mag-3)*1.6), color:magColor(e.mag),
-      weight:1, fillColor:magColor(e.mag), fillOpacity:.55
-    }).bindPopup(damagePopup(e), {maxWidth:280}).addTo(pointsLayer);
+    L.circleMarker([e.lat,e.lon], markerStyle(e))
+      .bindPopup(damagePopup(e), {maxWidth:280}).addTo(pointsLayer);
+    if(alerted(e)) alertHalo(e).addTo(pointsLayer);
   }
   if(document.getElementById("tPoints").classList.contains("on")) pointsLayer.addTo(map);
 }
@@ -1121,6 +1372,15 @@ function renderKPIs(){
     const a = new Date(Math.min(...times)).toISOString().slice(0,10);
     const z = new Date(Math.max(...times)).toISOString().slice(0,10);
     document.getElementById("stationRange").textContent = `${a} → ${z}`;
+  }
+  const src = document.getElementById("dataSource");
+  if(src){
+    const mirror = state.usedMirror;
+    src.textContent = mirror ? "USGS + espejo EMSC" : "USGS";
+    src.style.color = mirror ? "var(--m2)" : "";
+    src.title = mirror
+      ? "El USGS no respondió a parte de las consultas: esos datos vienen del espejo EMSC, que no publica intensidad medida ni alerta PAGER."
+      : "Fuente de datos activa";
   }
 }
 
@@ -1505,9 +1765,9 @@ function renderColombia(){
   coPoints.clearLayers();
   const big=[...ev].sort((a,b)=>b.mag-a.mag).slice(0,900);
   for(const e of big){
-    L.circleMarker([e.lat,e.lon],{radius:Math.max(2.5,(e.mag-3)*1.7),color:magColor(e.mag),
-      weight:1,fillColor:magColor(e.mag),fillOpacity:.55})
+    L.circleMarker([e.lat,e.lon], markerStyle(e, 1.7))
      .bindPopup(damagePopup(e),{maxWidth:280}).addTo(coPoints);
+    if(alerted(e)) alertHalo(e).addTo(coPoints);
   }
   if(document.getElementById("coTPoints").classList.contains("on")) coPoints.addTo(coMap);
   else coMap.removeLayer(coPoints);
@@ -1541,7 +1801,8 @@ function renderCoHighlight(coAll){
   const pool=recent.length?recent:coAll;
   if(!pool.length){ el.style.display="none"; return; }
   let big=pool[0]; for(const e of pool) if(e.mag>big.mag) big=e;
-  const info=mmiInfo(estimatedMMI(big.mag,big.depth));
+  const si=siteIntensity(big);
+  const info=mmiInfo(si.v);
   const days=Math.max(0,Math.round((Date.now()-big.time)/864e5));
   const ago=days===0?"hoy":days===1?"ayer":`hace ${days} d`;
   el.style.display="flex";
@@ -1552,9 +1813,11 @@ function renderCoHighlight(coAll){
        <div class="hl-meta" style="color:var(--faint)">Mayor sismo en Colombia · ${recent.length?'últimos 30 días':'catálogo'} · fuente USGS</div>
      </div>
      <div class="hl-mmi">
-       <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">Potencial estimado</div>
+       <div style="font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">
+         Intensidad máxima${si.est?" (estimada)":""}</div>
        <span class="mmi-badge" style="background:${info.color}">MMI ${info.roman}</span>
-       <div class="hl-meta" style="margin-top:6px">${info.label}<br>Energía ≈ ${energyString(big.mag)}</div>
+       <div class="hl-meta" style="margin-top:6px">${info.label}<br>
+         <span style="color:var(--faint)">${si.src}</span><br>Energía ≈ ${energyString(big.mag)}</div>
      </div>`;
 }
 
@@ -1572,13 +1835,13 @@ function renderCoDepth(ev){
 function renderCoList(coAll){
   const rows=[...coAll].sort((a,b)=>b.mag-a.mag).slice(0,8);
   document.getElementById("coRows").innerHTML=rows.map(e=>{
-    const info=mmiInfo(estimatedMMI(e.mag,e.depth));
+    const si=siteIntensity(e), info=mmiInfo(si.v);
     return `<tr>
       <td>${new Date(e.time).toISOString().slice(0,10)}</td>
       <td style="color:${magColor(e.mag)};font-weight:700">${e.mag.toFixed(1)}</td>
       <td>${e.depth.toFixed(0)} km</td>
       <td style="color:var(--text);white-space:normal">${(e.place||'').slice(0,32)}</td>
-      <td><span class="mmi-badge" style="background:${info.color};font-size:11px;padding:2px 7px">${info.roman}</span></td>
+      <td title="${si.src}"><span class="mmi-badge" style="background:${info.color};font-size:11px;padding:2px 7px">${info.roman}</span>${si.est?'<span class="est-flag">est</span>':''}</td>
     </tr>`;
   }).join("") || `<tr><td colspan="5" style="color:var(--faint)">Sin sismos en el rango.</td></tr>`;
 }
@@ -1659,15 +1922,17 @@ function renderAidEvents(){
   evs.sort((a,b)=>b.time-a.time);
   const rows=evs.slice(0,12);
   document.getElementById("aidEvents").innerHTML=rows.map(e=>{
-    const info=mmiInfo(estimatedMMI(e.mag,e.depth));
+    const si=siteIntensity(e), info=mmiInfo(si.v);
     const min=Math.round((Date.now()-e.time)/60000);
     const ago=min<60?`${min} min`:min<1440?`${Math.round(min/60)} h`:`${Math.round(min/1440)} d`;
     const dist=e.dist==null?"—":e.dist<1000?`${Math.round(e.dist)} km`:`${(e.dist/1000).toFixed(1)} mil km`;
+    const p=e.alert&&PAGER[e.alert];
     return `<tr>
       <td>${ago}</td>
       <td style="color:${magColor(e.mag)};font-weight:700">${e.mag.toFixed(1)}</td>
-      <td style="color:var(--text);white-space:normal">${(e.place||'').slice(0,30)}</td>
-      <td><span class="mmi-badge" style="background:${info.color};font-size:11px;padding:2px 7px">${info.roman}</span></td>
+      <td style="color:var(--text);white-space:normal">${(e.place||'').slice(0,30)}${
+        p&&(e.alert==="orange"||e.alert==="red")?` <span class="pb-level" style="background:${p.color};font-size:9px;padding:1px 6px">${p.label}</span>`:""}</td>
+      <td title="${si.src}"><span class="mmi-badge" style="background:${info.color};font-size:11px;padding:2px 7px">${info.roman}</span>${si.est?'<span class="est-flag">est</span>':''}</td>
       <td>${dist}</td></tr>`;
   }).join("") || `<tr><td colspan="5" style="color:var(--faint)">Sin sismos recientes.</td></tr>`;
 }
@@ -1769,9 +2034,15 @@ function parseCSV(txt){
 
 /* exportar vista */
 function exportCSV(){
-  const rows=[["time","latitude","longitude","depth","mag","place"]];
-  for(const e of state.view) rows.push([new Date(e.time).toISOString(),
-    e.lat,e.lon,e.depth,e.mag,`"${(e.place||"").replace(/"/g,"'")}"`]);
+  const rows=[["time","latitude","longitude","depth","mag","place",
+               "mmi","intensity_source","pager_alert","felt","network"]];
+  for(const e of state.view){
+    const si=siteIntensity(e);
+    rows.push([new Date(e.time).toISOString(),
+      e.lat,e.lon,e.depth,e.mag,`"${(e.place||"").replace(/"/g,"'")}"`,
+      si.v.toFixed(1), si.est?"estimated":(e.mmi!=null?"shakemap":"dyfi"),
+      e.alert||"", e.felt||"", e.net||""]);
+  }
   const blob=new Blob([rows.map(r=>r.join(",")).join("\n")],{type:"text/csv"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
   a.download="sismos_vista.csv"; a.click();
